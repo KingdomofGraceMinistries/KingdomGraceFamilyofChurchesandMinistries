@@ -1,0 +1,22 @@
+{
+  "name": "kingdom-grace-pastoral-network",
+  "version": "1.0.0",
+  "description": "Kingdom Grace Family of Churches and Ministries — Pastoral Network Platform",
+  "private": true,
+  "scripts": {
+    "start": "npx serve . -l 3000",
+    "dev": "npx serve . -l 3000",
+    "build": "echo 'Static site — no build step required'"
+  },
+  "keywords": [
+    "church",
+    "pastoral",
+    "ministry",
+    "kingdom-grace"
+  ],
+  "author": "Kingdom Grace Family of Churches and Ministries",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

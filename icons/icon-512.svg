@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#0a0a0f"/>
+  <circle cx="256" cy="210" r="120" fill="url(#g)"/>
+  <text x="256" y="245" text-anchor="middle" font-family="serif" font-weight="700" font-size="110" fill="#0a0a0f">KG</text>
+  <text x="256" y="390" text-anchor="middle" font-family="sans-serif" font-weight="500" font-size="32" fill="#c8a84c" letter-spacing="4">KINGDOM GRACE</text>
+  <text x="256" y="430" text-anchor="middle" font-family="sans-serif" font-weight="300" font-size="18" fill="#6a6458" letter-spacing="2">PASTORAL NETWORK</text>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c8a84c"/>
+      <stop offset="100%" stop-color="#e8c86a"/>
+    </linearGradient>
+  </defs>
+</svg>
