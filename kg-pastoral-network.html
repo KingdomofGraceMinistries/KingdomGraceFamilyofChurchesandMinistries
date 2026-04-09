@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#0a0a0f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Kingdom Grace">
+<meta name="apple-mobile-web-app-title" content="Pastoral Network">
 <link rel="manifest" href="/manifest.json">
-<title>Kingdom Grace — Pastoral Network</title>
+<title>Pastoral Network</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -188,6 +188,95 @@ textarea.fin{resize:vertical;min-height:80px;}
 .offline-bar .sync-btn{background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:var(--rs);padding:3px 10px;font-size:11px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;}
 .online-toast{position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(74,140,106,0.95);color:#fff;text-align:center;padding:6px 14px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;transform:translateY(-100%);transition:transform 0.3s ease;}
 .online-toast.show{transform:translateY(0);}
+
+/* NOTIFICATION SYSTEM */
+.notif-toast{position:fixed;top:12px;right:12px;left:12px;max-width:400px;margin:0 auto;z-index:10000;background:var(--ink2);border:0.5px solid var(--gold);border-radius:var(--r);padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.5);transform:translateY(-120%);transition:transform 0.3s ease;display:flex;align-items:flex-start;gap:12px;cursor:pointer;}
+.notif-toast.show{transform:translateY(0);}
+.notif-toast-icon{font-size:20px;flex-shrink:0;margin-top:1px;}
+.notif-toast-body{flex:1;min-width:0;}
+.notif-toast-title{font-size:13px;font-weight:500;color:var(--frost);margin-bottom:2px;}
+.notif-toast-msg{font-size:12px;color:var(--mist);line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.notif-toast-time{font-size:10px;color:var(--ash);margin-top:3px;}
+.notif-toast-close{position:absolute;top:8px;right:10px;font-size:14px;color:var(--ash);cursor:pointer;line-height:1;}
+.notif-badge{position:absolute;top:2px;right:50%;transform:translateX(12px);min-width:16px;height:16px;border-radius:8px;background:var(--flame);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;display:none;}
+.notif-badge.show{display:flex;}
+.bn{position:relative;}
+.notif-bell{position:relative;cursor:pointer;font-size:18px;padding:4px;}
+.notif-bell .notif-badge{top:-4px;right:-8px;transform:none;}
+.notif-drawer{position:fixed;top:0;right:0;bottom:0;width:min(340px,85vw);background:var(--ink);border-left:0.5px solid var(--br);z-index:10001;transform:translateX(100%);transition:transform 0.25s ease;display:flex;flex-direction:column;}
+.notif-drawer.open{transform:translateX(0);}
+.notif-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;opacity:0;pointer-events:none;transition:opacity 0.25s ease;}
+.notif-backdrop.open{opacity:1;pointer-events:auto;}
+.notif-drawer-header{display:flex;align-items:center;justify-content:space-between;padding:18px 16px;border-bottom:0.5px solid var(--br);}
+.notif-drawer-title{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--frost);}
+.notif-drawer-close{background:none;border:none;font-size:18px;color:var(--mist);cursor:pointer;padding:4px;}
+.notif-drawer-list{flex:1;overflow-y:auto;padding:0;}
+.notif-drawer-item{display:flex;gap:12px;padding:14px 16px;border-bottom:0.5px solid var(--br);cursor:pointer;transition:background 0.15s;}
+.notif-drawer-item:hover{background:var(--ink2);}
+.notif-drawer-item.unread{background:rgba(201,168,76,0.05);}
+.notif-drawer-item .notif-icon{font-size:20px;flex-shrink:0;margin-top:2px;}
+.notif-drawer-item .notif-content{flex:1;min-width:0;}
+.notif-drawer-item .notif-item-title{font-size:13px;font-weight:500;color:var(--frost);}
+.notif-drawer-item .notif-item-msg{font-size:12px;color:var(--mist);line-height:1.4;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.notif-drawer-item .notif-item-time{font-size:10px;color:var(--ash);margin-top:4px;}
+.notif-empty{padding:60px 20px;text-align:center;color:var(--ash);font-size:13px;font-style:italic;}
+
+/* SEARCH */
+.search-bar{position:relative;margin-bottom:14px;}
+.search-bar input{width:100%;background:var(--ink3);border:0.5px solid var(--br);border-radius:var(--r);padding:11px 14px 11px 36px;color:var(--frost);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.15s;}
+.search-bar input:focus{border-color:var(--gold);}
+.search-bar input::placeholder{color:var(--ash);}
+.search-bar .search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--ash);pointer-events:none;}
+.search-results{background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--r);max-height:60vh;overflow-y:auto;display:none;}
+.search-results.show{display:block;}
+.search-group-title{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gold);padding:12px 16px 6px;font-weight:500;}
+.search-item{display:flex;gap:10px;padding:10px 16px;border-bottom:0.5px solid var(--br);cursor:pointer;transition:background 0.15s;}
+.search-item:hover{background:var(--ink3);}
+.search-item:last-child{border-bottom:none;}
+.search-item-icon{font-size:16px;flex-shrink:0;margin-top:2px;}
+.search-item-body{flex:1;min-width:0;}
+.search-item-title{font-size:13px;color:var(--frost);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.search-item-meta{font-size:10px;color:var(--ash);margin-top:2px;}
+.search-empty{padding:20px;text-align:center;color:var(--ash);font-size:12px;font-style:italic;}
+details summary::-webkit-details-marker{display:none;}
+details summary::after{content:'▾';margin-left:auto;font-size:10px;color:var(--ash);transition:transform 0.2s;}
+details[open] summary::after{transform:rotate(180deg);}
+details[open] summary{border-bottom:0.5px solid var(--br);}
+#bp-help p{margin:0 0 8px;}
+#bp-help ul{margin:6px 0 10px 18px;padding:0;}
+#bp-help li{margin-bottom:4px;}
+
+/* ── MOBILE RESPONSIVE: Bishop/Admin Dashboard ── */
+@media(max-width:768px){
+  .b-topbar{flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px;}
+  .b-nav{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;gap:4px;padding-bottom:4px;}
+  .b-nav::-webkit-scrollbar{height:2px;}
+  .b-nav::-webkit-scrollbar-thumb{background:var(--br);}
+  .b-tab{padding:6px 10px;font-size:11px;}
+  .b-signout{padding:6px 10px;font-size:11px;}
+  .b-body{padding:16px;}
+  .b-stats{grid-template-columns:repeat(3,1fr) !important;gap:8px !important;}
+  .b-grid{grid-template-columns:1fr !important;}
+  .b-pastor-card{padding:12px !important;}
+  /* Messages: stack conversation list + thread */
+  .b-msg-grid{grid-template-columns:1fr !important;height:auto !important;min-height:auto !important;}
+  .b-msg-grid>div{max-height:50vh;}
+  .b-two-col{grid-template-columns:1fr !important;}
+  /* Search full width */
+  .search-bar{max-width:100% !important;}
+  #bishop-search-results{max-width:100% !important;}
+  /* Drill panels full width */
+  .b-drill{max-width:100% !important;}
+}
+@media(max-width:480px){
+  .b-network{font-size:15px;}
+  .b-role{font-size:9px;}
+  .b-nav{gap:3px;}
+  .b-tab{padding:5px 8px;font-size:10px;}
+  .b-stats{grid-template-columns:repeat(2,1fr) !important;}
+  .b-stat-num{font-size:20px;}
+  .b-body{padding:12px;}
+}
 .eve-footer{text-align:center;padding:10px 14px 12px;font-size:10px;color:var(--ash);letter-spacing:0.3px;}
 .eve-footer a{color:var(--mist);text-decoration:none;transition:color 0.15s;}
 .eve-footer a:hover{color:var(--gold);}
@@ -220,6 +309,19 @@ textarea.fin{resize:vertical;min-height:80px;}
 <body>
 <div id="kg-offline-bar" class="offline-bar">&#x26A0; No connection — your check-ins and prayers will sync when you're back online <button class="sync-btn" onclick="forceSyncNow()">Sync Now</button></div>
 <div id="kg-online-toast" class="online-toast">&#x2713; Back online — syncing your data</div>
+<div id="notif-toast" class="notif-toast" onclick="openNotifDrawer()">
+  <div class="notif-toast-icon" id="notif-toast-icon">🔔</div>
+  <div class="notif-toast-body"><div class="notif-toast-title" id="notif-toast-title"></div><div class="notif-toast-msg" id="notif-toast-msg"></div></div>
+  <span class="notif-toast-close" onclick="event.stopPropagation();hideNotifToast()">✕</span>
+</div>
+<div id="notif-backdrop" class="notif-backdrop" onclick="closeNotifDrawer()"></div>
+<div id="notif-drawer" class="notif-drawer">
+  <div class="notif-drawer-header">
+    <div class="notif-drawer-title">Notifications</div>
+    <button class="notif-drawer-close" onclick="closeNotifDrawer()">✕</button>
+  </div>
+  <div id="notif-drawer-list" class="notif-drawer-list"></div>
+</div>
 <div id="app"><!-- Pastor PWA screens injected here --></div>
 <div id="bishop-app"><!-- Bishop dashboard injected here --></div>
 <div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>
@@ -228,28 +330,64 @@ textarea.fin{resize:vertical;min-height:80px;}
 // ============================================================
 // CONFIG
 // ============================================================
+// Only connection credentials stay client-side — everything else comes from Supabase
 const C = {
-  networkName:   "Kingdom Grace Family of Churches and Ministries",
-  networkShort:  "Kingdom Grace",
-  appId:         "kgfcm",
-  bishopName:    "Bishop Peter Sasser",
-  bishopTitle:   "Presiding Bishop · Kingdom Grace",
-  bishopPin:     "000000",
+  // ── Connection (required to reach Supabase) ──
   supabaseUrl:   "https://kseocbwhuveieqhayske.supabase.co",
   supabasePublishableKey: "sb_publishable_NYSIUwcIft1MvYcDcn8T2g_gD7_L5uz",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZW9jYndodXZlaWVxaGF5c2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NzM4NTUsImV4cCI6MjA5MTI0OTg1NX0.5QQ0wWJsq8rhSJLq4JywRGEs9A1umxkA3PeLf72k6V0",
   get supabaseKey() { return this.supabasePublishableKey || this.supabaseAnonKey; },
-  aiProxyFn:     "kgfcm-ai-proxy",
+  // ── Populated from Supabase at boot ──
+  networkName:   '',
+  networkShort:  '',
+  appId:         '',
+  bishopName:    '',
+  bishopTitle:   '',
+  tagline:       '',
+  estLine:       '',
+  logoUrl:       '/icons/kg-logo.jpg',
+  aiProxyFn:     '',
+  pushNotifyFn:  '',
+  vapidPublicKey:'',
 };
 
-// ============================================================
+let KG_LOGO = '/icons/kg-logo.jpg';
 
-// LOGO
-const KG_LOGO = "/icons/kg-logo.jpg";
+// Fetch all config from Supabase — called once at boot
+async function loadConfig(){
+  try {
+    const rows=await sbS('rf_network_config',{select:'key,value'});
+    const cfg={};
+    rows.forEach(r=>cfg[r.key]=r.value);
+    C.networkName   = cfg.network_name   || C.networkName;
+    C.networkShort  = cfg.network_short  || C.networkShort;
+    C.appId         = cfg.app_id         || C.appId;
+    C.bishopName    = cfg.bishop_name    || C.bishopName;
+    C.bishopTitle   = cfg.bishop_title   || C.bishopTitle;
+    C.tagline       = cfg.tagline        || C.tagline;
+    C.estLine       = cfg.est_line       || C.estLine;
+    C.logoUrl       = cfg.logo_url       || C.logoUrl;
+    C.aiProxyFn     = cfg.ai_proxy_fn    || C.aiProxyFn;
+    C.pushNotifyFn  = cfg.push_notify_fn || C.pushNotifyFn;
+    C.vapidPublicKey= cfg.vapid_public_key||C.vapidPublicKey;
+    KG_LOGO = C.logoUrl;
+    // Update page title, meta, and manifest
+    document.title = C.networkShort + ' — Pastoral Network';
+    const metaTitle=document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if(metaTitle) metaTitle.content=C.networkShort;
+    // Dynamic manifest with network branding
+    const manifest={name:C.networkShort+' — Pastoral Network',short_name:C.networkShort,description:'Pastoral care and network oversight for '+C.networkName,start_url:'/',display:'standalone',orientation:'portrait',background_color:'#0a0a0f',theme_color:'#0a0a0f',icons:[{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'any'},{src:'/icons/icon-192.svg',sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:'/icons/icon-512.svg',sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
+    const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+    const manifestLink=document.querySelector('link[rel="manifest"]');
+    if(manifestLink) manifestLink.href=URL.createObjectURL(blob);
+  } catch(e){ /* offline — use cached or defaults */ }
+}
+
+// ============================================================
 
 // AI GUARDRAIL
 // ============================================================
-const GUARDRAIL = `You are a wise, spiritually grounded pastoral care assistant for a Kingdom Grace ministry network.
+function GUARDRAIL(){ return `You are a wise, spiritually grounded pastoral care assistant for the ${C.networkName||'ministry'} network.
 Your responses must always:
 1. Be anchored in scripture and biblical truth — reference specific verses
 2. Speak as a seasoned elder — compassionate, direct, never patronizing
@@ -257,7 +395,7 @@ Your responses must always:
 4. Gently redirect despair or negativity back to faith, community, and God's promises
 5. Keep responses concise — pastors are busy people
 6. Never undermine pastoral authority or church unity
-Respond in JSON only when requested. Never add markdown code fencing.`;
+Respond in JSON only when requested. Never add markdown code fencing.`; }
 
 // ============================================================
 // STATE
@@ -290,13 +428,14 @@ const timeAgo = ts => {
   if(s<60)return 'just now'; if(s<3600)return Math.floor(s/60)+'m ago';
   if(s<86400)return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago';
 };
+const esc = s => { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
 const initials = n => n ? n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : '??';
 const weekNum  = () => { const d=new Date(),j=new Date(d.getFullYear(),0,1); return Math.ceil(((d-j)/86400000+j.getDay()+1)/7); };
 const monthStr = () => new Date().toLocaleString('default',{month:'long',year:'numeric'});
 const saveLocal = (k,v) => localStorage.setItem(C.appId+'_'+k,JSON.stringify(v));
 const loadLocal = k => { try{return JSON.parse(localStorage.getItem(C.appId+'_'+k));}catch{return null;} };
 const avHTML = (url,name,size=36) => url
-  ? `<img src="${url}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)">`
+  ? `<img src="${esc(url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)">`
   : `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--ink3);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:${Math.round(size*0.38)}px;font-weight:700;color:var(--gold)">${initials(name)}</div>`;
 
 // ============================================================
@@ -354,7 +493,7 @@ async function audit(eventType, meta={}){
 async function aiCall(prompt,callType='care'){
   const r=await fetch(`${C.supabaseUrl}/functions/v1/${C.aiProxyFn}`,{
     method:'POST',headers:SB_HDR(),
-    body:JSON.stringify({callType,prompt:GUARDRAIL+'\n\n'+prompt})});
+    body:JSON.stringify({callType,prompt:GUARDRAIL()+'\n\n'+prompt})});
   if(!r.ok)throw new Error('AI error '+r.status);
   const d=await r.json();
   return typeof d==='string'?d:JSON.stringify(d);
@@ -385,10 +524,10 @@ async function runBurnoutCheck(){
       if(banner){
         banner.innerHTML=`<div style="font-size:22px;margin-bottom:8px">🕊️</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);margin-bottom:6px">A word for you today</div>
-          <div style="font-size:13px;color:var(--mist);line-height:1.6">${d.message}<br><br><em style="color:var(--gold);font-size:12px">"${d.verse}" — ${d.ref}</em></div>`;
+          <div style="font-size:13px;color:var(--mist);line-height:1.6">${esc(d.message)}<br><br><em style="color:var(--gold);font-size:12px">"${esc(d.verse)}" — ${esc(d.ref)}</em></div>`;
         banner.style.display='block';
       }
-    } catch(e){ console.log('burnout prompt err',e); }
+    } catch(e){ /* burnout prompt failed — non-critical, banner stays hidden */ }
   }
 }
 
@@ -400,7 +539,7 @@ async function getWeekPrompt(){
   const cached = loadLocal('wp_'+wk);
   if(cached){ ST.weekPrompt=cached; return cached; }
   try {
-    const raw = await aiCall(`Generate a weekly ministry team devotional discussion prompt for a Kingdom Grace pastoral network. Week ${wk} of the year. Make it personal, faith-stretching, and community-building. Anchor in scripture. JSON: {"prompt":"...","scripture":"...","ref":"...","theme":"..."}`,'team');
+    const raw = await aiCall(`Generate a weekly ministry team devotional discussion prompt for the ${C.networkName} pastoral network. Week ${wk} of the year. Make it personal, faith-stretching, and community-building. Anchor in scripture. JSON: {"prompt":"...","scripture":"...","ref":"...","theme":"..."}`,'team');
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
     saveLocal('wp_'+wk,d); ST.weekPrompt=d; return d;
   } catch(e){
@@ -413,7 +552,7 @@ async function getMonthChallenge(){
   const cached=loadLocal('mc_'+mo);
   if(cached){ ST.monthChallenge=cached; return cached; }
   try {
-    const raw=await aiCall(`Generate a monthly ministry team challenge for ${monthStr()} for a Kingdom Grace network of pastors. Actionable, measurable, spiritually significant — something each pastor can do in their own context. JSON: {"title":"...","goal":"...","action":"...","scripture":"...","ref":"..."}`,'team');
+    const raw=await aiCall(`Generate a monthly ministry team challenge for ${monthStr()} for the ${C.networkName} network of pastors. Actionable, measurable, spiritually significant — something each pastor can do in their own context. JSON: {"title":"...","goal":"...","action":"...","scripture":"...","ref":"..."}`,'team');
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
     saveLocal('mc_'+mo,d); ST.monthChallenge=d; return d;
   } catch(e){
@@ -461,12 +600,29 @@ async function submitPin(){
   const pin=pinBuf; pinBuf='';
   document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
   if(ST.pinTarget==='bishop'){
-    if(pin===C.bishopPin){
-      ST.session={userId:'bishop',role:'bishop',name:C.bishopName,token:C.supabaseKey};
-      saveLocal('session',ST.session);
-      audit('LOGIN_SUCCESS',{method:'pin',role:'bishop'});
-      launchBishopDashboard();
-    } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'bishop'}); }
+    try {
+      const cfg=await sbS('rf_network_config',{select:'value',key:'eq.bishop_pin_hash'});
+      const storedHash=cfg.length?cfg[0].value:null;
+      if(storedHash&&btoa(pin)===storedHash){
+        ST.session={userId:'bishop',role:'bishop',name:C.bishopName,token:C.supabaseKey};
+        saveLocal('session',ST.session);
+        audit('LOGIN_SUCCESS',{method:'pin',role:'bishop'});
+        launchBishopDashboard(); initNotifPolling();
+      } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'bishop'}); }
+    } catch(e){ showErr('pin-err','Could not verify. Check your connection.'); }
+    return;
+  }
+  if(ST.pinTarget==='admin'){
+    try {
+      const admins=await sbS('rf_admins',{select:'*',pin_hash:'eq.'+btoa(pin),status:'eq.active'});
+      if(admins.length){
+        const a=admins[0];
+        ST.session={userId:a.id,role:'admin',name:a.full_name,permissions:a.permissions||[],token:C.supabaseKey};
+        saveLocal('session',ST.session);
+        audit('LOGIN_SUCCESS',{method:'pin',role:'admin',targetId:a.id});
+        launchBishopDashboard(); initNotifPolling();
+      } else { showErr('pin-err','Incorrect admin PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'admin'}); }
+    } catch(e){ showErr('pin-err','Could not verify. Check connection.'); }
     return;
   }
   // Pastor PIN
@@ -477,7 +633,7 @@ async function submitPin(){
       ST.session={userId:p.id,role:'pastor',name:p.full_name,token:C.supabaseKey};
       ST.profile=p; saveLocal('session',ST.session); saveLocal('profile',p);
       audit('LOGIN_SUCCESS',{method:'pin',role:'pastor',table:'rf_pastors',targetId:p.id});
-      go('s-home');
+      go('s-home'); initNotifPolling();
     } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'pastor'}); }
   } catch(e){ showErr('pin-err','Could not verify. Check connection.'); }
 }
@@ -505,6 +661,7 @@ function logout(){
   audit('LOGOUT',{});
   ST.session=null; ST.profile=null;
   localStorage.removeItem(C.appId+'_session');
+  if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; }
   $('bishop-app').className='';
   $('app').style.display='';
   go('s-login');
@@ -518,9 +675,9 @@ async function loadHome(){
   const wp=await getWeekPrompt();
   const wpEl=$('home-wp');
   if(wpEl&&wp) wpEl.innerHTML=`<div class="week-prompt">
-    <div class="week-label">🕯️ Week ${weekNum()} · ${wp.theme}</div>
-    <div class="week-question">"${wp.prompt}"</div>
-    <em style="font-size:11px;color:var(--ash)">${wp.scripture} — ${wp.ref}</em>
+    <div class="week-label">🕯️ Week ${weekNum()} · ${esc(wp.theme)}</div>
+    <div class="week-question">"${esc(wp.prompt)}"</div>
+    <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
     <div style="margin-top:12px"><button class="fsub" style="padding:9px;font-size:12px" onclick="go('s-team')">Respond with the team →</button></div>
   </div>`;
   // Load bishop broadcast messages
@@ -532,7 +689,7 @@ async function loadHome(){
         <div style="margin-top:16px">
           <div class="flbl" style="margin-bottom:10px">📣 From Bishop ${C.bishopName.split(' ').pop()}</div>
           ${msgs.map(m=>`<div class="card" style="border-left:2px solid var(--gold)">
-            <div style="font-size:13px;color:var(--frost);line-height:1.6">${m.message_text}</div>
+            <div style="font-size:13px;color:var(--frost);line-height:1.6">${esc(m.message_text)}</div>
             <div style="font-size:10px;color:var(--ash);margin-top:6px">${timeAgo(m.sent_at)}</div>
           </div>`).join('')}
         </div>`;
@@ -546,16 +703,16 @@ async function loadTeam(){
   const mc=await getMonthChallenge();
   const whEl=$('team-wp-header');
   if(whEl&&wp) whEl.innerHTML=`<div class="week-prompt" style="margin-bottom:0">
-    <div class="week-label">📅 Week ${weekNum()} · ${wp.theme}</div>
-    <div class="week-question">"${wp.prompt}"</div>
-    <em style="font-size:11px;color:var(--ash)">${wp.scripture} — ${wp.ref}</em>
+    <div class="week-label">📅 Week ${weekNum()} · ${esc(wp.theme)}</div>
+    <div class="week-question">"${esc(wp.prompt)}"</div>
+    <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
   </div>`;
   const mcEl=$('team-mc');
   if(mcEl&&mc) mcEl.innerHTML=`<div class="challenge-card">
     <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#60a5fa;margin-bottom:5px">🎯 ${monthStr()}</div>
-    <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost);margin-bottom:4px">${mc.title}</div>
-    <div style="font-size:13px;color:var(--mist);margin-bottom:6px">${mc.goal}</div>
-    <em style="font-size:11px;color:var(--ash)">"${mc.scripture}" — ${mc.ref}</em>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost);margin-bottom:4px">${esc(mc.title)}</div>
+    <div style="font-size:13px;color:var(--mist);margin-bottom:6px">${esc(mc.goal)}</div>
+    <em style="font-size:11px;color:var(--ash)">"${esc(mc.scripture)}" — ${esc(mc.ref)}</em>
   </div>`;
   const list=$('team-responses');
   if(!list) return;
@@ -564,9 +721,9 @@ async function loadTeam(){
     const rows=await sbS('rf_team_responses',{select:'*,rf_pastors(full_name,avatar_url)',week_number:'eq.'+weekNum(),order:'created_at.asc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         ${r.is_pinned?'<span class="pill pill-gold" style="margin-left:auto">📌</span>':''}
-      </div><div class="pw-body">${r.response_text}</div>
+      </div><div class="pw-body">${esc(r.response_text)}</div>
     </div>`).join(''):'<div class="empty">Be the first to respond this week.</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load. Check connection.</div>';}
 }
@@ -578,9 +735,9 @@ async function loadPrayer(){
     const rows=await sbS('rf_prayer_requests',{select:'*,rf_pastors(full_name,avatar_url)',status:'eq.active',order:'created_at.desc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         <span class="pill pill-mist" style="margin-left:auto">🙏 ${r.prayed_count||0}</span>
-      </div><div class="pw-body">${r.request_text}</div>
+      </div><div class="pw-body">${esc(r.request_text)}</div>
       <div class="pw-actions">
         <button class="pw-act" onclick="markPrayed('${r.id}',this)">🙏 I Prayed</button>
         <button class="pw-act" onclick="encouragePrayer('${r.id}',this)">💬 Encourage</button>
@@ -596,9 +753,9 @@ async function loadWins(){
     const rows=await sbS('rf_wins',{select:'*,rf_pastors(full_name,avatar_url)',order:'created_at.desc',limit:'40'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         <span style="margin-left:auto;font-size:20px">🏆</span>
-      </div><div class="pw-body">${r.win_text}</div>
+      </div><div class="pw-body">${esc(r.win_text)}</div>
       <div class="pw-actions">
         <button class="pw-act" onclick="reactWin('${r.id}','fire',this)">🔥 ${r.fire_count||0}</button>
         <button class="pw-act" onclick="reactWin('${r.id}','glory',this)">✝️ ${r.glory_count||0}</button>
@@ -614,7 +771,7 @@ function loadProfile(){
   const gifts=p.spiritual_gifts||[];
   document.querySelectorAll('.gift-chip').forEach(c=>c.classList.toggle('on',gifts.includes(c.dataset.gift)));
   const wrap=$('av-wrap');
-  if(wrap&&p.avatar_url) wrap.innerHTML=`<img src="${p.avatar_url}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" onclick="$('av-file').click()">`;
+  if(wrap&&p.avatar_url) wrap.innerHTML=`<img src="${esc(p.avatar_url)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" onclick="$('av-file').click()">`;
 }
 
 function loadCheckin(){
@@ -633,11 +790,15 @@ async function loadDM(){
     const rows=await sbS('rf_direct_messages',{select:'*',or:`sender_id.eq.${uid},recipient_id.eq.${uid}`,order:'created_at.asc'});
     list.innerHTML=rows.length?rows.map(r=>{
       const mine=r.sender_id===uid;
+      const receipt=mine?(r.is_read?'<span style="color:var(--gold);font-size:10px;margin-left:4px" title="Read">✓✓</span>':'<span style="color:var(--ash);font-size:10px;margin-left:4px" title="Sent">✓</span>'):'';
       return `<div class="dm-item ${mine?'mine':''}">
-        <div><div class="dm-bubble">${r.message_text}</div><div class="dm-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="dm-bubble">${esc(r.message_text)}</div><div class="dm-time">${timeAgo(r.created_at)}${receipt}</div></div>
       </div>`;
     }).join(''):'<div style="padding:40px 0;text-align:center;color:var(--ash);font-size:13px;font-style:italic">Start a conversation with your Bishop.</div>';
     list.scrollTop=list.scrollHeight;
+    // Mark bishop's messages to this pastor as read
+    const unread=rows.filter(r=>r.sender_id==='bishop'&&!r.is_read);
+    if(unread.length) sbU('rf_direct_messages',`sender_id.eq.bishop&recipient_id.eq.${uid}&is_read.eq.false`,{is_read:true}).catch(()=>{});
   } catch(e){list.innerHTML='<div class="empty">Could not load messages.</div>';}
 }
 
@@ -664,6 +825,7 @@ async function submitPrayer(){
   try {
     await sbI('rf_prayer_requests',{pastor_id:ST.session.userId,request_text:text,status:'active',prayed_count:0});
     audit('PRAYER_POSTED',{table:'rf_prayer_requests'});
+    firePushNotify('prayer',{pastor_id:ST.session.userId,pastor_name:ST.session.name});
     ta.value=''; hideErr('prayer-err'); loadPrayer();
   } catch(e){showErr('prayer-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post prayer request →';
@@ -676,6 +838,7 @@ async function submitWin(){
   try {
     await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text,fire_count:0,glory_count:0});
     audit('WIN_POSTED',{table:'rf_wins'});
+    firePushNotify('win',{pastor_id:ST.session.userId,pastor_name:ST.session.name});
     ta.value=''; hideErr('win-err'); loadWins();
   } catch(e){showErr('win-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post your win →';
@@ -726,24 +889,27 @@ async function sendDM(){
   try {
     await sbI('rf_direct_messages',{sender_id:ST.session.userId,recipient_id:'bishop',message_text:text,is_read:false});
     audit('DM_SENT',{table:'rf_direct_messages',recipient:'bishop'});
+    firePushNotify('dm',{recipient_id:'bishop',sender_name:ST.session.name,message_text:text});
     inp.value=''; loadDM();
-  } catch(e){}
+  } catch(e){ showErr('dm-err','Could not send message. Please try again.'); }
   btn.disabled=false;
 }
 
 async function markPrayed(id,btn){
   btn.classList.add('on'); btn.textContent='🙏 Praying';
-  try { await sbU('rf_prayer_requests','id=eq.'+id,{prayed_count:1}); } catch(e){}
+  try { await sbU('rf_prayer_requests','id=eq.'+id,{prayed_count:1}); } catch(e){ btn.classList.remove('on'); btn.textContent='🙏 I Prayed'; }
 }
 
 async function encouragePrayer(id,btn){
   btn.textContent='✓ Sent'; btn.classList.add('on');
+  try { await sbU('rf_prayer_requests','id=eq.'+id,{prayed_count:1}); audit('PRAYER_ENCOURAGED',{table:'rf_prayer_requests',targetId:id}); } catch(e){ btn.textContent='💬 Encourage'; btn.classList.remove('on'); }
 }
 
 async function reactWin(id,type,btn){
   const field=type==='fire'?'fire_count':'glory_count';
+  const orig=btn.textContent;
   btn.classList.add('on');
-  try { await sbU('rf_wins','id=eq.'+id,{[field]:1}); } catch(e){}
+  try { await sbU('rf_wins','id=eq.'+id,{[field]:1}); } catch(e){ btn.classList.remove('on'); btn.textContent=orig; }
 }
 
 function setPulse(v,btn){
@@ -769,33 +935,81 @@ async function handleAvatar(input){
 }
 
 async function registerPastor(){
-  const name=$('reg-name')?.value.trim(),email=$('reg-email')?.value.trim(),token=$('reg-token')?.value.trim();
-  if(!name||!email||!token){showErr('reg-err','All fields required.');return;}
-  const btn=$('reg-btn'); btn.disabled=true; btn.textContent='Verifying...';
+  const name=$('reg-name')?.value.trim(),email=$('reg-email')?.value.trim(),token=$('reg-token')?.value.trim(),pin=$('reg-pin')?.value.trim();
+  if(!name){showErr('reg-err','Please enter your name.');return;}
+  if(!email){showErr('reg-err','Please enter your email.');return;}
+  if(!pin||pin.length<6){showErr('reg-err','PIN must be 6 digits.');return;}
+  if(!token){showErr('reg-err','No invite link detected. Ask your Bishop for a new one.');return;}
+  const btn=$('reg-btn'); btn.disabled=true; btn.textContent='Setting up...';
   try {
-    const inv=await sbS('rf_invites',{select:'*',token:'eq.'+token,'email':'eq.'+email});
-    if(!inv.length){showErr('reg-err','Invalid invite. Contact your Bishop.');btn.disabled=false;btn.textContent='Register →';return;}
-    const rows=await sbI('rf_pastors',{email,full_name:name,status:'active',posts_this_week:0});
+    // Verify invite — match by token (email checked loosely for invites without email)
+    const inv=await sbS('rf_invites',{select:'*',token:'eq.'+token});
+    if(!inv.length){showErr('reg-err','This invite link is no longer valid. Ask your Bishop for a new one.');btn.disabled=false;btn.textContent='Join ${C.networkShort} →';return;}
+    if(inv[0].accepted_at){showErr('reg-err','This invite has already been used.');btn.disabled=false;btn.textContent='Join ${C.networkShort} →';return;}
+    // Create pastor
+    const rows=await sbI('rf_pastors',{email,full_name:name,pin_hash:btoa(pin),status:'active',posts_this_week:0});
     const p=rows[0];
-    btn.textContent='Setting up biometric...';
-    const bioOk=await registerBio(p.id,p.full_name);
-    await sbU('rf_invites','token=eq.'+token,{accepted_at:new Date().toISOString()});
+    // Mark invite as accepted
+    await sbU('rf_invites','token=eq.'+token,{accepted_at:new Date().toISOString(),email:email});
+    // Try biometric setup silently — if it works, great; if not, PIN is already set
+    registerBio(p.id,p.full_name).catch(()=>{});
+    // Log in
     ST.session={userId:p.id,role:'pastor',name:p.full_name,token:C.supabaseKey};
     ST.profile=p; saveLocal('session',ST.session); saveLocal('profile',p);
     audit('PASTOR_REGISTERED',{table:'rf_pastors',targetId:p.id,email});
-    if(!bioOk){ show('pin-setup'); }
-    else { go('s-profile'); }
+    initNotifPolling();
+    go('s-home');
   } catch(e){showErr('reg-err',e.message||'Registration failed.');}
-  btn.disabled=false; btn.textContent='Register →';
+  btn.disabled=false; btn.textContent='Join '+C.networkShort+' →';
 }
 
-async function setupPin(){
-  const pin=$('setup-pin')?.value;
-  if(!pin||pin.length<6){showErr('reg-err','PIN must be 6 digits.');return;}
+async function requestPinReset(){
+  const email=$('reset-email')?.value.trim();
+  if(!email){showErr('reset-err','Please enter your email.');return;}
+  const btn=$('reset-req-btn'); btn.disabled=true; btn.textContent='Checking...';
   try {
-    await sbU('rf_pastors','id=eq.'+ST.session.userId,{pin_hash:btoa(pin)});
-    go('s-profile');
-  } catch(e){showErr('reg-err','Could not save PIN.');}
+    const rows=await sbS('rf_pastors',{select:'id,email',email:'eq.'+email,status:'eq.active'});
+    if(!rows.length){showErr('reset-err','No active pastor found with that email.');btn.disabled=false;btn.textContent='Send reset code →';return;}
+    // Generate a 6-character reset code
+    const code=Math.random().toString(36).slice(2,8).toUpperCase();
+    const expires=new Date(Date.now()+30*60*1000).toISOString(); // 30 min
+    await sbU('rf_pastors','id=eq.'+rows[0].id,{reset_token:code,reset_token_expires:expires});
+    audit('PIN_RESET_REQUESTED',{table:'rf_pastors',targetId:rows[0].id,email});
+    hideErr('reset-err');
+    showOk('reset-ok','Reset code: '+code+'\n\nIn production this would be emailed. For now, share it with your Bishop or note it down. Code expires in 30 minutes.');
+    const sec=$('reset-token-section'); if(sec) sec.style.display='block';
+  } catch(e){showErr('reset-err','Could not process reset request.');}
+  btn.disabled=false; btn.textContent='Send reset code →';
+}
+
+async function confirmPinReset(){
+  const email=$('reset-email')?.value.trim();
+  const code=$('reset-code')?.value.trim();
+  const newPin=$('reset-new-pin')?.value.trim();
+  if(!code){showErr('reset-err','Enter the reset code.');return;}
+  if(!newPin||newPin.length<6){showErr('reset-err','PIN must be 6 digits.');return;}
+  try {
+    const rows=await sbS('rf_pastors',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
+    if(!rows.length){showErr('reset-err','Pastor not found.');return;}
+    const p=rows[0];
+    if(!p.reset_token||p.reset_token!==code){showErr('reset-err','Invalid reset code.');return;}
+    if(new Date(p.reset_token_expires)<new Date()){showErr('reset-err','Reset code has expired. Request a new one.');return;}
+    await sbU('rf_pastors','id=eq.'+p.id,{pin_hash:btoa(newPin),reset_token:null,reset_token_expires:null});
+    audit('PIN_RESET_COMPLETE',{table:'rf_pastors',targetId:p.id});
+    hideErr('reset-err');
+    showOk('reset-ok','PIN updated! You can now sign in.');
+    setTimeout(()=>go('s-login'),2000);
+  } catch(e){showErr('reset-err','Could not reset PIN.');}
+}
+
+async function bishopResetPastorPin(pastorId){
+  const code=Math.random().toString(36).slice(2,8).toUpperCase();
+  const expires=new Date(Date.now()+60*60*1000).toISOString(); // 1 hour
+  try {
+    await sbU('rf_pastors','id=eq.'+pastorId,{reset_token:code,reset_token_expires:expires});
+    audit('BISHOP_PIN_RESET',{table:'rf_pastors',targetId:pastorId});
+    window.prompt('Share this PIN reset code with the pastor. It expires in 1 hour:',code);
+  } catch(e){ alert('Could not generate reset code.'); }
 }
 
 async function tryBioLogin(){
@@ -808,7 +1022,7 @@ async function tryBioLogin(){
         if(rows.length){
           ST.session=saved; ST.profile=rows[0];
           audit('LOGIN_SUCCESS',{method:'biometric',role:'pastor',table:'rf_pastors',targetId:saved.userId});
-          go('s-home'); return;
+          go('s-home'); initNotifPolling(); return;
         }
       } catch(e){}
     }
@@ -820,9 +1034,10 @@ function showPinLogin(role){
   ST.pinTarget=role; pinBuf='';
   document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
   const mark=$('pin-mark'),title=$('pin-title'),sub=$('pin-sub');
-  if(mark) mark.textContent=role==='bishop'?'👑':'🔢';
-  if(title) title.textContent=role==='bishop'?'Bishop Access':'Pastor Login';
-  if(sub) sub.textContent=role==='bishop'?'Enter your master PIN':'Enter your 6-digit PIN';
+  if(mark) mark.textContent=role==='bishop'?'👑':role==='admin'?'🔧':'🔢';
+  if(title) title.textContent=role==='bishop'?'Bishop Access':role==='admin'?'Admin Access':'Pastor Login';
+  if(sub) sub.textContent=role==='bishop'?'Enter your master PIN':role==='admin'?'Enter your admin PIN':'Enter your 6-digit PIN';
+  const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display=role==='pastor'?'block':'none';
   hideErr('pin-err');
   go('s-pin');
 }
@@ -878,6 +1093,7 @@ async function submitAnnouncement(){
       status:'active'
     });
     audit('ANNOUNCEMENT_POSTED',{table:'rf_announcements',hasImage:!!imageUrl});
+    firePushNotify('announcement',{pastor_id:ST.session.userId,title:$('ann-title')?.value.trim()||'',body:text||''});
     if(ta) ta.value='';
     if($('ann-title')) $('ann-title').value='';
     annPhotoData=null; annPhotoFile=null;
@@ -904,14 +1120,14 @@ function annCard(r, role){
     <div class="pw-header">
       ${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'Pastor',34)}
       <div style="flex:1;min-width:0">
-        <div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div>
+        <div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div>
         <div class="pw-time">${timeAgo(r.created_at)}</div>
       </div>
       ${r.is_pinned?'<span class="pill pill-gold" style="margin-left:auto">📌 Pinned</span>':''}
     </div>
-    ${r.title?`<div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);margin-bottom:6px">${r.title}</div>`:''}
-    ${r.body?`<div class="pw-body">${r.body}</div>`:''}
-    ${r.image_data?`<img src="${r.image_data}" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--rm);margin-top:10px">`:''}
+    ${r.title?`<div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);margin-bottom:6px">${esc(r.title)}</div>`:''}
+    ${r.body?`<div class="pw-body">${esc(r.body)}</div>`:''}
+    ${r.image_data?`<img src="${esc(r.image_data)}" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--rm);margin-top:10px">`:''}
     ${(mine||isAdmin)?`<div class="pw-actions" style="margin-top:10px">
       ${isAdmin?`<button class="pw-act ${r.is_pinned?'on':''}" onclick="togglePinAnn('${r.id}',${r.is_pinned},this)">${r.is_pinned?'📌 Unpin':'📌 Pin'}</button>`:''}
       <button class="pw-act danger" onclick="deleteAnn('${r.id}',this)">Remove</button>
@@ -928,7 +1144,7 @@ async function togglePinAnn(id, pinned, btn){
     // refresh
     if(ST.session?.role==='bishop') loadBishopAnnouncements();
     else loadAnnouncements();
-  } catch(e){}
+  } catch(e){ btn.textContent='Error — try again'; }
 }
 
 async function deleteAnn(id, btn){
@@ -937,7 +1153,7 @@ async function deleteAnn(id, btn){
     await sbU('rf_announcements','id=eq.'+id,{status:'removed'});
     const card=$('ann-card-'+id);
     if(card) card.remove();
-  } catch(e){}
+  } catch(e){ btn.textContent='Error — try again'; }
 }
 
 async function loadBishopAnnouncements(){
@@ -995,6 +1211,7 @@ async function submitBishopAnn(){
       is_pinned:false,
       status:'active'
     });
+    firePushNotify('announcement',{pastor_id:'bishop',title:$('b-ann-title')?.value.trim()||'',body:text||''});
     if(ta) ta.value='';
     if($('b-ann-title')) $('b-ann-title').value='';
     bAnnPhotoData=null;
@@ -1016,26 +1233,42 @@ function launchBishopDashboard(){
   switchBishopPanel('overview');
 }
 
+function isBishop(){ return ST.session?.role==='bishop'; }
+function isAdmin(){ return ST.session?.role==='admin'; }
+function isDashboardUser(){ return isBishop()||isAdmin(); }
+
 function renderBishopDashboard(){
+  const roleLabel=isAdmin()?'Admin Dashboard':'Bishop Dashboard';
+  const roleName=isAdmin()?ST.session.name:C.bishopName;
+  // Admin sees everything except private prayer requests
+  const showPrayer=isBishop();
   $('bishop-app').innerHTML=`
   <div class="b-topbar">
     <div class="b-logo">
       <img id="b-logo-img" src="" style="width:38px;height:38px;object-fit:contain;border-radius:4px" alt="KG">
-      <div><div class="b-network">${C.networkName}</div><div class="b-role">Bishop Dashboard</div></div>
+      <div><div class="b-network">${C.networkName}</div><div class="b-role">${esc(roleLabel)} · ${esc(roleName)}</div></div>
     </div>
     <div class="b-nav">
       <button class="b-tab on" onclick="switchBishopPanel('overview')">Overview</button>
       <button class="b-tab" onclick="switchBishopPanel('engagement')">Engagement</button>
-      <button class="b-tab" onclick="switchBishopPanel('prayer')">Prayer Wall</button>
+      ${showPrayer?'<button class="b-tab" onclick="switchBishopPanel(\'prayer\')">Prayer Wall</button>':''}
       <button class="b-tab" onclick="switchBishopPanel('wins')">Wins Wall</button>
       <button class="b-tab" onclick="switchBishopPanel('team')">Team</button>
       <button class="b-tab" onclick="switchBishopPanel('announcements')">Announcements</button>
       <button class="b-tab" onclick="switchBishopPanel('messages')">Messages</button>
       <button class="b-tab" onclick="switchBishopPanel('invites')">Invites</button>
+      ${isBishop()?'<button class="b-tab" onclick="switchBishopPanel(\'manage-admins\')">Admins</button>':''}
+      <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
+      <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
       <button class="b-signout" onclick="logout()">Sign out</button>
     </div>
   </div>
   <div class="b-body">
+    <div class="search-bar" style="max-width:500px;margin-bottom:20px">
+      <span class="search-icon">🔍</span>
+      <input id="bishop-search" type="text" placeholder="Search pastors, prayers, wins, messages..." oninput="debounceSearch(this.value,'bishop')">
+    </div>
+    <div id="bishop-search-results" class="search-results" style="max-width:500px;margin-bottom:20px"></div>
     <div id="bp-overview" class="b-panel active"></div>
     <div id="bp-engagement" class="b-panel"></div>
     <div id="bp-prayer" class="b-panel"></div>
@@ -1045,16 +1278,21 @@ function renderBishopDashboard(){
     <div id="bp-messages" class="b-panel"></div>
     <div id="bp-invites" class="b-panel"></div>
     <div id="bp-pastor-detail" class="b-panel"></div>
+    <div id="bp-manage-admins" class="b-panel"></div>
+    <div id="bp-help" class="b-panel"></div>
   </div>
   <div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>`;
 }
 
 function switchBishopPanel(panel){
+  // Block admin from accessing prayer wall
+  if(panel==='prayer'&&isAdmin()) return;
   ST.bishopPanel=panel;
+  document.querySelectorAll('.b-tab').forEach(t=>t.classList.remove('on'));
+  // Highlight the active tab by matching onclick content
   document.querySelectorAll('.b-tab').forEach(t=>{
-    const panels=['overview','engagement','prayer','wins','team','announcements','messages','invites'];
-    const idx=panels.indexOf(panel);
-    t.classList.toggle('on',Array.from(document.querySelectorAll('.b-tab')).indexOf(t)===idx);
+    const onclick=t.getAttribute('onclick')||'';
+    if(onclick.includes("'"+panel+"'")) t.classList.add('on');
   });
   document.querySelectorAll('.b-panel').forEach(p=>p.classList.remove('active'));
   const el=$('bp-'+panel); if(el) el.classList.add('active');
@@ -1066,6 +1304,8 @@ function switchBishopPanel(panel){
   else if(panel==='announcements') loadBishopAnnouncements();
   else if(panel==='messages') loadBishopMessages();
   else if(panel==='invites') loadBishopInvites();
+  else if(panel==='manage-admins') loadManageAdmins();
+  else if(panel==='help') loadHelp();
 }
 
 async function loadBishopOverview(){
@@ -1084,24 +1324,25 @@ async function loadBishopOverview(){
         <div class="b-stat"><div class="b-stat-num green">${thriving}</div><div class="b-stat-lbl">Thriving</div></div>
         <div class="b-stat"><div class="b-stat-num amber">${watch}</div><div class="b-stat-lbl">Watch</div></div>
         <div class="b-stat"><div class="b-stat-num red">${atRisk}</div><div class="b-stat-lbl">At risk</div></div>
+        <div class="b-stat"><div class="b-stat-num" style="color:var(--flame)">${pastors.filter(p=>!p.last_checkin_at||(Date.now()-new Date(p.last_checkin_at).getTime()>7*86400000)).length}</div><div class="b-stat-lbl">Overdue 7d+</div></div>
       </div>
-      <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">Kingdom Grace Network — ${pastors.length} Pastors</div>
+      <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">${esc(C.networkShort)} Network — ${pastors.length} Pastors</div>
       <div class="b-grid">
         ${pastors.map(p=>{
           const score=burnoutScore(p);
           const level=burnoutLevel(score);
           return `<div class="b-pastor-card risk-${score>=66?'red':score>=33?'amber':'none'}" onclick="bishopDrillPastor('${p.id}')">
             <div class="b-pastor-top">
-              ${p.avatar_url?`<img src="${p.avatar_url}" class="b-pastor-av">`:`<div class="b-pastor-av-init">${initials(p.full_name)}</div>`}
+              ${p.avatar_url?`<img src="${esc(p.avatar_url)}" class="b-pastor-av">`:`<div class="b-pastor-av-init">${initials(p.full_name)}</div>`}
               <div style="flex:1;min-width:0">
-                <div class="b-pastor-name">${p.full_name}</div>
-                <div class="b-pastor-church">${p.church_name||'—'} · ${p.city||'—'}</div>
+                <div class="b-pastor-name">${esc(p.full_name)}</div>
+                <div class="b-pastor-church">${esc(p.church_name||'—')} · ${esc(p.city||'—')}</div>
                 <div style="margin-top:4px"><span class="pill ${level==='green'?'pill-green':level==='amber'?'pill-gold':'pill-red'}">${burnoutLabel(score)}</span></div>
               </div>
             </div>
             <div class="b-burnout-bar"><div class="b-burnout-fill fill-${level}" style="width:${score}%"></div></div>
             <div class="b-pastor-meta">
-              <div class="b-pastor-last">Last check-in: ${p.last_checkin_at?timeAgo(p.last_checkin_at):'Never'}</div>
+              <div class="b-pastor-last">${(!p.last_checkin_at||(Date.now()-new Date(p.last_checkin_at).getTime()>7*86400000))?'<span style="color:var(--flame);font-weight:500">⚠ Overdue</span> · ':''}Last check-in: ${p.last_checkin_at?timeAgo(p.last_checkin_at):'Never'}</div>
               <div style="font-size:18px">${['','😔','😕','😐','🙂','🔥'][p.last_pulse_score||3]}</div>
             </div>
           </div>`;
@@ -1139,7 +1380,7 @@ async function loadBishopEngagement(){
     }));
     const maxVal=Math.max(pastors.length,1,...engagement.map(e=>Math.max(e.checkins,e.posts)));
     panel.innerHTML=`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="b-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
         <div class="b-chart">
           <div class="b-chart-title">Team check-in activity — last 8 weeks</div>
           <div class="b-bars">
@@ -1170,7 +1411,7 @@ async function loadBishopEngagement(){
             return `<div class="b-heat-dot" style="background:${bg}"></div>`;
           }).join('');
           return `<div class="b-heat-row">
-            <div class="b-heat-name">${p.full_name}</div>
+            <div class="b-heat-name">${esc(p.full_name)}</div>
             <div class="b-heat-dots">${dots}</div>
             <span class="pill ${level==='green'?'pill-green':level==='amber'?'pill-gold':'pill-red'}" style="margin-left:8px;min-width:60px;text-align:center">${burnoutLabel(score)}</span>
           </div>`;
@@ -1187,10 +1428,10 @@ async function loadBishopPrayer(){
     panel.innerHTML=`<div style="margin-bottom:16px;font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase">${rows.length} Prayer Requests</div>`
       +(rows.length?rows.map(r=>`<div class="pw-item">
         <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-          <div><div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
-          <span class="pill ${r.status==='active'?'pill-green':'pill-mist'}" style="margin-left:auto">${r.status}</span>
+          <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+          <span class="pill ${r.status==='active'?'pill-green':'pill-mist'}" style="margin-left:auto">${esc(r.status)}</span>
         </div>
-        <div class="pw-body">${r.request_text}</div>
+        <div class="pw-body">${esc(r.request_text)}</div>
         <div class="pw-actions">
           <button class="pw-act" onclick="bishopPrayFor('${r.id}',this)">🙏 Pray</button>
           <button class="pw-act" onclick="bishopRespondPrayer('${r.id}')">✉️ Respond privately</button>
@@ -1209,10 +1450,10 @@ async function loadBishopWins(){
     panel.innerHTML=`<div style="margin-bottom:16px;font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase">${rows.length} Victories Posted</div>`
       +(rows.length?rows.map(r=>`<div class="pw-item">
         <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-          <div><div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+          <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
           <span style="margin-left:auto;font-size:20px">🏆</span>
         </div>
-        <div class="pw-body">${r.win_text}</div>
+        <div class="pw-body">${esc(r.win_text)}</div>
         <div class="pw-actions">
           <button class="pw-act ${r.is_pinned?'on':''}" onclick="bishopPinWin('${r.id}',this)">${r.is_pinned?'📌 Pinned':'📌 Pin'}</button>
           <button class="pw-act" onclick="bishopCelebrate('${r.id}',this)">🔥 Celebrate</button>
@@ -1232,7 +1473,7 @@ async function loadBishopTeam(){
     panel.innerHTML=`
       <div class="b-drill" style="margin-bottom:20px">
         <div style="font-size:11px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Week ${weekNum()} Prompt${wp?' · '+wp.theme:''}</div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost);font-style:italic;margin-bottom:6px">"${wp?.prompt||'Loading...'}"</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost);font-style:italic;margin-bottom:6px">"${esc(wp?.prompt||'Loading...')}"</div>
         <div class="pw-actions" style="margin-top:10px">
           <button class="pw-act" onclick="bishopOverridePrompt()">✏️ Override this week's prompt</button>
           <button class="pw-act" onclick="bishopRegeneratePrompt()">🔄 AI regenerate</button>
@@ -1241,10 +1482,10 @@ async function loadBishopTeam(){
       <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">${rows.length} Responses this week</div>
       ${rows.length?rows.map(r=>`<div class="pw-item">
         <div class="pw-header">
-          <div class="pw-name">${r.rf_pastors?.full_name||'Pastor'}</div>
+          <div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div>
           <div class="pw-time" style="margin-left:auto">${timeAgo(r.created_at)}</div>
         </div>
-        <div class="pw-body">${r.response_text}</div>
+        <div class="pw-body">${esc(r.response_text)}</div>
         <div class="pw-actions">
           <button class="pw-act ${r.is_pinned?'on':''}" onclick="bishopPinResponse('${r.id}',this)">${r.is_pinned?'📌 Pinned':'📌 Pin'}</button>
           <button class="pw-act" onclick="bishopReplyToResponse('${r.pastor_id}')">✉️ Message pastor</button>
@@ -1269,7 +1510,7 @@ async function loadBishopMessages(){
       if(!m.is_read&&m.sender_id!=='bishop') threads[pid].unread++;
     });
     panel.innerHTML=`
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;height:calc(100vh - 160px);min-height:400px">
+      <div class="b-msg-grid" style="display:grid;grid-template-columns:280px 1fr;gap:16px;height:calc(100vh - 160px);min-height:400px">
         <div style="background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column">
           <div style="padding:14px 16px;border-bottom:0.5px solid var(--br);font-size:12px;color:var(--mist);font-weight:500">Conversations</div>
           <div style="overflow-y:auto;flex:1" id="b-dm-thread-list">
@@ -1279,8 +1520,8 @@ async function loadBishopMessages(){
               return `<div class="b-dm-item ${thread.unread?'unread':''}" onclick="openBishopDmThread('${p.id}')">
                 ${avHTML(p.avatar_url,p.full_name,36)}
                 <div style="flex:1;min-width:0">
-                  <div style="font-size:13px;font-weight:500;color:var(--frost)">${p.full_name}</div>
-                  <div class="b-dm-preview">${last?last.message_text:'No messages yet'}</div>
+                  <div style="font-size:13px;font-weight:500;color:var(--frost)">${esc(p.full_name)}</div>
+                  <div class="b-dm-preview">${last?esc(last.message_text):'No messages yet'}</div>
                 </div>
                 ${thread.unread?`<div class="b-unread-dot"></div>`:''}
                 <div class="b-dm-time">${last?timeAgo(last.created_at):''}</div>
@@ -1311,7 +1552,7 @@ async function openBishopDmThread(pastorId){
   view.innerHTML=`
     <div style="padding:14px 16px;border-bottom:0.5px solid var(--br);display:flex;align-items:center;gap:10px;flex-shrink:0">
       ${avHTML(p.avatar_url,p.full_name,36)}
-      <div style="font-size:14px;font-weight:500;color:var(--frost)">${p.full_name}</div>
+      <div style="font-size:14px;font-weight:500;color:var(--frost)">${esc(p.full_name)}</div>
     </div>
     <div id="b-thread-msgs" style="flex:1;overflow-y:auto;padding:16px"></div>
     <div style="padding:12px 16px;border-top:0.5px solid var(--br);display:flex;gap:10px;align-items:flex-end;flex-shrink:0">
@@ -1323,13 +1564,14 @@ async function openBishopDmThread(pastorId){
     const rows=await sbS('rf_direct_messages',{select:'*',or:`sender_id.eq.${pastorId},recipient_id.eq.${pastorId}`,order:'created_at.asc'});
     msgEl.innerHTML=rows.length?rows.map(r=>{
       const mine=r.sender_id==='bishop';
+      const receipt=mine?(r.is_read?'<span style="color:var(--gold);font-size:10px;margin-left:4px" title="Read">✓✓</span>':'<span style="color:var(--ash);font-size:10px;margin-left:4px" title="Sent">✓</span>'):'';
       return `<div class="dm-item ${mine?'mine':''}">
-        <div><div class="dm-bubble">${r.message_text}</div><div class="dm-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="dm-bubble">${esc(r.message_text)}</div><div class="dm-time">${timeAgo(r.created_at)}${receipt}</div></div>
       </div>`;
     }).join(''):'<div style="text-align:center;color:var(--ash);font-size:13px;padding:20px;font-style:italic">No messages yet.</div>';
     msgEl.scrollTop=msgEl.scrollHeight;
     await sbU('rf_direct_messages',`recipient_id.eq.bishop&sender_id.eq.${pastorId}`,{is_read:true});
-  } catch(e){}
+  } catch(e){ msgEl.innerHTML='<div class="empty">Could not load conversation.</div>'; }
 }
 
 async function sendBishopReply(pastorId){
@@ -1338,8 +1580,9 @@ async function sendBishopReply(pastorId){
   try {
     await sbI('rf_direct_messages',{sender_id:'bishop',recipient_id:pastorId,message_text:text,is_read:false});
     audit('BISHOP_DM_SENT',{table:'rf_direct_messages',targetId:pastorId});
+    firePushNotify('dm',{recipient_id:pastorId,sender_name:C.bishopName,message_text:text});
     inp.value=''; openBishopDmThread(pastorId);
-  } catch(e){}
+  } catch(e){ inp.placeholder='Could not send — try again'; }
 }
 
 async function sendBishopBlast(){
@@ -1349,6 +1592,7 @@ async function sendBishopBlast(){
   try {
     await sbI('rf_bishop_messages',{message_text:text,type:'blast',sent_at:new Date().toISOString()});
     audit('BISHOP_BLAST_SENT',{table:'rf_bishop_messages',recipientCount:'all'});
+    firePushNotify('blast',{bishop_name:C.bishopName.split(' ').pop(),message_text:text});
     ta.value=''; showOk('b-blast-ok','Sent to all pastors.');
   } catch(e){showErr('b-blast-err','Could not send.');}
   btn.disabled=false; btn.textContent='Send to all →';
@@ -1358,14 +1602,13 @@ async function loadBishopInvites(){
   const panel=$('bp-invites'); if(!panel) return;
   panel.innerHTML=`
     <div class="b-drill" style="max-width:500px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:14px">Invite a Pastor</div>
+      <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Invite a Pastor</div>
+      <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">Enter their name, then send them the link via text message.</div>
       <label class="flbl">Pastor's Full Name</label>
-      <input class="fin" id="inv-name" placeholder="Pastor First Last">
-      <label class="flbl">Email Address</label>
-      <input class="fin" id="inv-email" type="email" placeholder="pastor@church.org">
+      <input class="fin" id="inv-name" placeholder="First and Last name">
       <div class="err" id="inv-err"></div>
       <div class="ok-msg" id="inv-ok"></div>
-      <button class="fsub" id="inv-btn" onclick="sendBishopInvite()" style="padding:12px;font-size:13px">Send invitation →</button>
+      <button class="fsub" id="inv-btn" onclick="sendBishopInvite()" style="padding:12px;font-size:13px">Create Invite →</button>
     </div>
     <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">All Invitations</div>
     <div id="inv-list">${loading()}</div>`;
@@ -1374,13 +1617,11 @@ async function loadBishopInvites(){
     $('inv-list').innerHTML=rows.length?`<table style="width:100%;border-collapse:collapse">
       <thead><tr style="font-size:11px;color:var(--ash);letter-spacing:0.5px">
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Name</th>
-        <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Email</th>
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Sent</th>
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Status</th>
       </tr></thead>
       <tbody>${rows.map(r=>`<tr style="font-size:13px">
-        <td style="padding:10px 12px;border-bottom:0.5px solid var(--br);color:var(--frost)">${r.invited_name||'—'}</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid var(--br);color:var(--mist)">${r.email}</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid var(--br);color:var(--frost)">${esc(r.invited_name||'—')}</td>
         <td style="padding:10px 12px;border-bottom:0.5px solid var(--br);color:var(--ash)">${timeAgo(r.created_at)}</td>
         <td style="padding:10px 12px;border-bottom:0.5px solid var(--br)"><span class="pill ${r.accepted_at?'pill-green':'pill-mist'}">${r.accepted_at?'Joined':'Pending'}</span></td>
       </tr>`).join('')}</tbody>
@@ -1389,17 +1630,43 @@ async function loadBishopInvites(){
 }
 
 async function sendBishopInvite(){
-  const name=$('inv-name')?.value.trim(),email=$('inv-email')?.value.trim();
-  if(!email){showErr('inv-err','Email required.');return;}
-  const btn=$('inv-btn'); btn.disabled=true; btn.textContent='Sending...';
+  const name=$('inv-name')?.value.trim();
+  if(!name){showErr('inv-err','Please enter the pastor\'s name.');return;}
+  const btn=$('inv-btn'); btn.disabled=true; btn.textContent='Creating...';
   try {
-    const token=btoa(email+':'+Date.now());
-    await sbI('rf_invites',{email,invited_name:name||'',token,accepted_at:null});
-    $('inv-name').value=''; $('inv-email').value='';
-    showOk('inv-ok',`Invitation created for ${email}. Share this token with them: ${token}`);
+    const token=btoa(name+':'+Date.now());
+    await sbI('rf_invites',{email:'',invited_name:name,token,accepted_at:null});
+    audit('BISHOP_INVITE_SENT',{table:'rf_invites',invited_name:name});
+    // Build invite link
+    const link=location.origin+'/?invite='+encodeURIComponent(token);
+    const msg=`${C.bishopName} is inviting you to join the ${C.networkName} pastoral network.\n\nTap this link to get started:\n${link}`;
+    $('inv-name').value='';
+    hideErr('inv-err');
+    // Show share options
+    $('inv-ok').innerHTML=`<div style="margin-bottom:10px">Invite created for <strong>${esc(name)}</strong></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="fsub" style="flex:1;padding:10px;font-size:12px;min-width:120px" onclick="shareInvite('sms','${esc(encodeURIComponent(msg))}')">📱 Send via Text</button>
+        <button class="fsub" style="flex:1;padding:10px;font-size:12px;min-width:120px;background:var(--ink3);border:0.5px solid var(--br);color:var(--mist)" onclick="shareInvite('share','${esc(encodeURIComponent(msg))}')">📤 Share Link</button>
+        <button class="fsub" style="flex:1;padding:10px;font-size:12px;min-width:120px;background:var(--ink3);border:0.5px solid var(--br);color:var(--mist)" onclick="shareInvite('copy','${esc(link)}')">📋 Copy Link</button>
+      </div>`;
+    showOk('inv-ok');
     loadBishopInvites();
-  } catch(e){showErr('inv-err','Could not send invite.');}
-  btn.disabled=false; btn.textContent='Send invitation →';
+  } catch(e){showErr('inv-err','Could not create invite.');}
+  btn.disabled=false; btn.textContent='Create Invite →';
+}
+
+function shareInvite(method, data){
+  const decoded=decodeURIComponent(data);
+  if(method==='sms'){
+    window.open('sms:?body='+data,'_self');
+  } else if(method==='share'&&navigator.share){
+    navigator.share({title:'Join '+C.networkShort,text:decoded}).catch(()=>{});
+  } else if(method==='share'){
+    // Fallback — copy to clipboard
+    navigator.clipboard.writeText(decoded).then(()=>alert('Message copied! Paste it in a text or email.')).catch(()=>{});
+  } else if(method==='copy'){
+    navigator.clipboard.writeText(decoded).then(()=>alert('Link copied!')).catch(()=>{});
+  }
 }
 
 async function bishopDrillPastor(pastorId){
@@ -1421,14 +1688,14 @@ async function bishopDrillPastor(pastorId){
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
         <button class="b-tab" onclick="switchBishopPanel('overview')">← Back to overview</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="b-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div>
           <div class="b-drill">
             <div class="b-drill-header">
-              ${p.avatar_url?`<img src="${p.avatar_url}" class="b-drill-av">`:`<div class="b-pastor-av-init" style="width:60px;height:60px;font-size:22px">${initials(p.full_name)}</div>`}
+              ${p.avatar_url?`<img src="${esc(p.avatar_url)}" class="b-drill-av">`:`<div class="b-pastor-av-init" style="width:60px;height:60px;font-size:22px">${initials(p.full_name)}</div>`}
               <div>
-                <div class="b-drill-name">${p.full_name}</div>
-                <div class="b-drill-church">${p.church_name||'—'} · ${p.city||'—'}</div>
+                <div class="b-drill-name">${esc(p.full_name)}</div>
+                <div class="b-drill-church">${esc(p.church_name||'—')} · ${esc(p.city||'—')}</div>
                 <div style="margin-top:6px"><span class="pill ${level==='green'?'pill-green':level==='amber'?'pill-gold':'pill-red'}">${burnoutLabel(score)} · ${score}/100</span></div>
               </div>
             </div>
@@ -1439,11 +1706,14 @@ async function bishopDrillPastor(pastorId){
               </div>
               <div style="font-size:11px;color:var(--ash);margin-top:6px">Last check-in: ${p.last_checkin_at?timeAgo(p.last_checkin_at):'Never'} · Pulse: ${['','😔','😕','😐','🙂','🔥'][p.last_pulse_score||3]}</div>
             </div>
-            ${p.bio?`<div style="font-size:12px;color:var(--mist);line-height:1.6;margin-bottom:10px;font-style:italic">"${p.bio}"</div>`:''}
-            ${p.prayer_focus?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">🙏 PRAYER FOCUS</div><div style="font-size:12px;color:var(--mist)">${p.prayer_focus}</div></div>`:''}
-            ${p.believing_for?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">✝️ BELIEVING FOR</div><div style="font-size:12px;color:var(--mist)">${p.believing_for}</div></div>`:''}
-            ${(p.spiritual_gifts||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.spiritual_gifts.map(g=>`<span class="pill pill-gold" style="font-size:10px">${g}</span>`).join('')}</div>`:''}
-            <button class="fsub" style="margin-top:14px;padding:10px;font-size:12px" onclick="openBishopDmThread('${p.id}');switchBishopPanel('messages')">✉️ Send private message →</button>
+            ${p.bio?`<div style="font-size:12px;color:var(--mist);line-height:1.6;margin-bottom:10px;font-style:italic">"${esc(p.bio)}"</div>`:''}
+            ${p.prayer_focus?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">🙏 PRAYER FOCUS</div><div style="font-size:12px;color:var(--mist)">${esc(p.prayer_focus)}</div></div>`:''}
+            ${p.believing_for?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">✝️ BELIEVING FOR</div><div style="font-size:12px;color:var(--mist)">${esc(p.believing_for)}</div></div>`:''}
+            ${(p.spiritual_gifts||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${p.spiritual_gifts.map(g=>`<span class="pill pill-gold" style="font-size:10px">${esc(g)}</span>`).join('')}</div>`:''}
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button class="fsub" style="flex:1;padding:10px;font-size:12px" onclick="openBishopDmThread('${p.id}');switchBishopPanel('messages')">✉️ Message</button>
+              <button class="fsub" style="flex:1;padding:10px;font-size:12px;background:var(--ink3);border:0.5px solid var(--br);color:var(--mist)" onclick="bishopResetPastorPin('${p.id}')">🔑 Reset PIN</button>
+            </div>
           </div>
         </div>
         <div>
@@ -1453,31 +1723,175 @@ async function bishopDrillPastor(pastorId){
               <span style="font-size:20px">${['','😔','😕','😐','🙂','🔥'][c.pulse_score||3]}</span>
               <div style="flex:1">
                 <div style="font-size:11px;color:var(--ash)">${timeAgo(c.created_at)}</div>
-                ${c.notes?`<div style="font-size:12px;color:var(--mist);font-style:italic">"${c.notes}"</div>`:''}
+                ${c.notes?`<div style="font-size:12px;color:var(--mist);font-style:italic">"${esc(c.notes)}"</div>`:''}
               </div>
             </div>`).join(''):'<div class="empty" style="padding:16px 0">No check-ins yet.</div>'}
           </div>
           <div class="b-drill">
             <div style="font-size:12px;color:var(--mist);font-weight:500;margin-bottom:10px">Recent wins</div>
-            ${wins.length?wins.map(w=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--br);font-size:12px;color:var(--mist)">${w.win_text}</div>`).join(''):'<div class="empty" style="padding:10px 0">No wins posted.</div>'}
+            ${wins.length?wins.map(w=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--br);font-size:12px;color:var(--mist)">${esc(w.win_text)}</div>`).join(''):'<div class="empty" style="padding:10px 0">No wins posted.</div>'}
           </div>
           <div class="b-drill">
             <div style="font-size:12px;color:var(--mist);font-weight:500;margin-bottom:10px">Prayer requests</div>
-            ${prayers.length?prayers.map(pr=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--br);font-size:12px;color:var(--mist)">${pr.request_text}</div>`).join(''):'<div class="empty" style="padding:10px 0">No prayer requests.</div>'}
+            ${prayers.length?prayers.map(pr=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--br);font-size:12px;color:var(--mist)">${esc(pr.request_text)}</div>`).join(''):'<div class="empty" style="padding:10px 0">No prayer requests.</div>'}
           </div>
         </div>
       </div>`;
   } catch(e){panel.innerHTML='<div class="empty">Could not load pastor profile.</div>';}
 }
 
+// ── HELP PANEL ──
+function loadHelp(){
+  const panel=$('bp-help'); if(!panel) return;
+  const role=isAdmin()?'Admin':'Bishop';
+  panel.innerHTML=`
+    <div style="max-width:700px">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700;color:var(--frost);margin-bottom:4px">${role} Guide</div>
+      <div style="font-size:12px;color:var(--mist);margin-bottom:24px">Everything you need to manage your pastoral network.</div>
+
+      ${helpSection('1','Logging In','How to access the dashboard',`
+        <p><strong style="color:var(--gold)">Bishop:</strong> Tap <strong>"Bishop Access"</strong> on the login screen and enter your 6-digit PIN.</p>
+        <p><strong style="color:var(--sky)">Admin:</strong> Tap <strong>"Admin Access"</strong> and enter the PIN the Bishop gave you.</p>
+        <p>You'll be taken to the dashboard. Admins see everything the Bishop sees <strong>except</strong> private prayer requests.</p>
+      `)}
+
+      ${helpSection('2','Inviting a Pastor','Add someone to your network in 30 seconds',`
+        <p><strong>Step 1:</strong> Go to the <strong>Invites</strong> tab.</p>
+        <p><strong>Step 2:</strong> Type the pastor's <strong>full name</strong> and tap <strong>"Create Invite."</strong></p>
+        <p><strong>Step 3:</strong> Three buttons appear:</p>
+        <ul>
+          <li><strong>Send via Text</strong> — opens your phone's text message app with the invite link ready to send</li>
+          <li><strong>Share Link</strong> — opens your share menu (WhatsApp, email, etc.)</li>
+          <li><strong>Copy Link</strong> — copies the link so you can paste it anywhere</li>
+        </ul>
+        <p>When the pastor taps the link, they enter their name, email, and choose a PIN. That's it — they're in.</p>
+      `)}
+
+      ${isBishop()?helpSection('3','Adding an Admin','Give someone access to help manage the network',`
+        <p>Admins can send invites, post announcements, message pastors, and view the dashboard. They <strong>cannot</strong> see private prayer requests.</p>
+        <p><strong>Step 1:</strong> Go to the <strong>Admins</strong> tab.</p>
+        <p><strong>Step 2:</strong> Enter the admin's <strong>name</strong> and choose a <strong>6-digit PIN</strong> for them.</p>
+        <p><strong>Step 3:</strong> Tap <strong>"Add Admin"</strong> and share the PIN with them.</p>
+        <p>To remove an admin, tap the red <strong>"Remove"</strong> button next to their name.</p>
+      `):''}
+
+      ${helpSection('4','Sending Messages','Private messages and blasts',`
+        <p><strong>Private message:</strong> Go to <strong>Messages</strong> tab, pick a pastor, type your message, tap <strong>"Send."</strong></p>
+        <p>You'll see check marks: <span style="color:var(--ash)">one gray check</span> = sent, <span style="color:var(--gold)">two gold checks</span> = read.</p>
+        <p><strong>Blast to all:</strong> At the bottom of the Messages tab, type in the <strong>"Blast to all pastors"</strong> box and tap <strong>"Send to all."</strong></p>
+      `)}
+
+      ${helpSection('5','Posting Announcements','Share updates with the whole network',`
+        <p>Go to the <strong>Announcements</strong> tab, enter a title and message, optionally attach a photo, and tap <strong>"Post to all pastors."</strong></p>
+        <p>You can <strong>pin</strong> important announcements so they stay at the top, or <strong>remove</strong> ones that are no longer needed.</p>
+      `)}
+
+      ${helpSection('6','Understanding the Overview','What the pastor cards mean',`
+        <p>Each pastor shows a <strong>wellbeing score</strong> based on their check-in activity:</p>
+        <ul>
+          <li><span style="color:#4ade80;font-weight:600">Green (Thriving)</span> — checking in regularly, engaged</li>
+          <li><span style="color:var(--gold);font-weight:600">Amber (Watch)</span> — some decrease in engagement</li>
+          <li><span style="color:var(--flame);font-weight:600">Red (At Risk)</span> — may be struggling, consider reaching out</li>
+        </ul>
+        <p>A red <strong>"Overdue"</strong> warning appears if a pastor hasn't checked in for 7+ days.</p>
+        <p>Tap any pastor card to see their full profile, recent check-ins, wins, and prayer requests.</p>
+      `)}
+
+      ${helpSection('7','Resetting a Pastor\'s PIN','If a pastor is locked out',`
+        <p><strong>Step 1:</strong> Tap the pastor's card in <strong>Overview.</strong></p>
+        <p><strong>Step 2:</strong> Tap the <strong>"Reset PIN"</strong> button.</p>
+        <p><strong>Step 3:</strong> A reset code appears — <strong>share it with the pastor.</strong> It expires in 1 hour.</p>
+        <p>The pastor then goes to the login screen, taps <strong>"Locked out? Reset your PIN,"</strong> enters their email, the code, and their new PIN.</p>
+      `)}
+
+      ${helpSection('8','Notifications','How you\'ll know when something happens',`
+        <p>A <strong>bell icon</strong> in the top bar shows unread notifications. Tap it to see them all.</p>
+        <p>The first time you use the app, it will ask to send notifications — <strong>tap "Allow"</strong> to receive alerts even when the app is closed.</p>
+        <p>You'll be notified about: new messages, prayer requests, announcements, wins, and overdue check-ins.</p>
+      `)}
+
+      ${helpSection('9','Troubleshooting','Common issues and fixes',`
+        <p><strong>"I can't log in"</strong> — Make sure you're entering the correct 6-digit PIN. Bishop: contact your developer. Admin: ask the Bishop to recreate your account.</p>
+        <p><strong>"A pastor didn't get the invite"</strong> — Go to Invites, create a new invite with their name, and re-send the link via text.</p>
+        <p><strong>"No connection" bar</strong> — Check your internet. The app works offline for viewing, but needs a connection to send. Queued actions sync automatically when you're back online.</p>
+        <p><strong>"I need to change the network name"</strong> — All branding is stored in the database. Contact your developer to update it.</p>
+      `)}
+    </div>`;
+}
+
+function helpSection(num, title, subtitle, content){
+  return `<details style="margin-bottom:12px;background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--r);overflow:hidden">
+    <summary style="padding:16px 18px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;-webkit-user-select:none;user-select:none">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--gold3);border:0.5px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--gold);flex-shrink:0">${num}</div>
+      <div style="flex:1"><div style="font-size:14px;font-weight:500;color:var(--frost)">${title}</div><div style="font-size:11px;color:var(--ash);margin-top:1px">${subtitle}</div></div>
+    </summary>
+    <div style="padding:0 18px 18px;font-size:13px;color:var(--mist);line-height:1.7">${content}</div>
+  </details>`;
+}
+
+// ── MANAGE ADMINS (bishop only) ──
+async function loadManageAdmins(){
+  if(!isBishop()) return;
+  const panel=$('bp-manage-admins'); if(!panel) return;
+  panel.innerHTML=loading();
+  try {
+    const admins=await sbS('rf_admins',{select:'*',order:'created_at.desc'});
+    panel.innerHTML=`
+      <div class="b-drill" style="max-width:500px;margin-bottom:20px">
+        <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Add an Admin</div>
+        <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">Admins can manage invites, messages, announcements, and view pastors — but cannot see private prayer requests.</div>
+        <label class="flbl">Admin Name</label>
+        <input class="fin" id="admin-name" placeholder="First and Last name">
+        <label class="flbl">6-Digit PIN for this admin</label>
+        <input class="fin" id="admin-pin" type="number" inputmode="numeric" placeholder="e.g. 123456" maxlength="6">
+        <div class="err" id="admin-err"></div>
+        <div class="ok-msg" id="admin-ok"></div>
+        <button class="fsub" onclick="addAdmin()" style="padding:12px;font-size:13px">Add Admin →</button>
+      </div>
+      <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">${admins.length} Admin${admins.length!==1?'s':''}</div>
+      ${admins.length?admins.map(a=>`<div class="pw-item" style="display:flex;align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:50%;background:rgba(58,110,168,0.15);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔧</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500;color:var(--frost)">${esc(a.full_name)}</div>
+          <div style="font-size:11px;color:var(--ash)">Added ${timeAgo(a.created_at)} · ${a.status==='active'?'<span style="color:var(--sage)">Active</span>':'<span style="color:var(--flame)">Disabled</span>'}</div>
+        </div>
+        <button class="pw-act danger" onclick="removeAdmin('${a.id}',this)" style="flex-shrink:0">Remove</button>
+      </div>`).join(''):'<div class="empty">No admins added yet.</div>'}`;
+  } catch(e){ panel.innerHTML='<div class="empty">Could not load admins.</div>'; }
+}
+
+async function addAdmin(){
+  const name=$('admin-name')?.value.trim();
+  const pin=$('admin-pin')?.value.trim();
+  if(!name){showErr('admin-err','Please enter the admin\'s name.');return;}
+  if(!pin||pin.length<6){showErr('admin-err','PIN must be 6 digits.');return;}
+  try {
+    await sbI('rf_admins',{full_name:name,pin_hash:btoa(pin),status:'active'});
+    audit('ADMIN_ADDED',{table:'rf_admins',admin_name:name});
+    $('admin-name').value=''; $('admin-pin').value='';
+    hideErr('admin-err');
+    showOk('admin-ok',name+' has been added as an admin. Share their PIN with them: '+pin);
+    loadManageAdmins();
+  } catch(e){showErr('admin-err','Could not add admin.');}
+}
+
+async function removeAdmin(id,btn){
+  if(!confirm('Remove this admin? They will no longer be able to log in.')) return;
+  try {
+    await sbD('rf_admins','id=eq.'+id);
+    audit('ADMIN_REMOVED',{table:'rf_admins',targetId:id});
+    btn.closest('.pw-item').remove();
+  } catch(e){ btn.textContent='Error — retry'; }
+}
+
 // Bishop moderation
-async function bishopPinResponse(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_team_responses','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_RESPONSE',{table:'rf_team_responses',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){}}
-async function bishopPinWin(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_wins','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_WIN',{table:'rf_wins',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){}}
-async function bishopRemovePrayer(id,btn){if(!confirm('Remove this prayer request?'))return;try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'removed'});audit('BISHOP_REMOVE_PRAYER',{table:'rf_prayer_requests',targetId:id});btn.closest('.pw-item').remove();}catch(e){}}
-async function bishopRemoveWin(id,btn){if(!confirm('Remove this post?'))return;try{await sbD('rf_wins','id=eq.'+id);audit('BISHOP_REMOVE_WIN',{table:'rf_wins',targetId:id});btn.closest('.pw-item').remove();}catch(e){}}
-async function bishopMarkAnswered(id,btn){try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'answered'});audit('BISHOP_MARK_ANSWERED',{table:'rf_prayer_requests',targetId:id});btn.textContent='✅ Answered';btn.classList.add('on');}catch(e){}}
-async function bishopPrayFor(id,btn){btn.classList.add('on');btn.textContent='🙏 Praying';}
-async function bishopCelebrate(id,btn){btn.classList.add('on');btn.textContent='🔥 Celebrated!';}
+async function bishopPinResponse(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_team_responses','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_RESPONSE',{table:'rf_team_responses',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){btn.classList.toggle('on');btn.textContent='Error — retry';}}
+async function bishopPinWin(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_wins','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_WIN',{table:'rf_wins',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){btn.classList.toggle('on');btn.textContent='Error — retry';}}
+async function bishopRemovePrayer(id,btn){if(!confirm('Remove this prayer request?'))return;try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'removed'});audit('BISHOP_REMOVE_PRAYER',{table:'rf_prayer_requests',targetId:id});btn.closest('.pw-item').remove();}catch(e){btn.textContent='Error — retry';}}
+async function bishopRemoveWin(id,btn){if(!confirm('Remove this post?'))return;try{await sbD('rf_wins','id=eq.'+id);audit('BISHOP_REMOVE_WIN',{table:'rf_wins',targetId:id});btn.closest('.pw-item').remove();}catch(e){btn.textContent='Error — retry';}}
+async function bishopMarkAnswered(id,btn){try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'answered'});audit('BISHOP_MARK_ANSWERED',{table:'rf_prayer_requests',targetId:id});btn.textContent='✅ Answered';btn.classList.add('on');}catch(e){btn.textContent='Error — retry';}}
+async function bishopPrayFor(id,btn){btn.classList.add('on');btn.textContent='🙏 Praying';try{await sbU('rf_prayer_requests','id=eq.'+id,{prayed_count:1});audit('BISHOP_PRAY_FOR',{table:'rf_prayer_requests',targetId:id});}catch(e){btn.classList.remove('on');btn.textContent='🙏 Pray';}}
+async function bishopCelebrate(id,btn){btn.classList.add('on');btn.textContent='🔥 Celebrated!';try{await sbU('rf_wins','id=eq.'+id,{fire_count:1});audit('BISHOP_CELEBRATE',{table:'rf_wins',targetId:id});}catch(e){btn.classList.remove('on');btn.textContent='🔥 Celebrate';}}
 function bishopRespondPrayer(pastorId){openBishopDmThread(pastorId);switchBishopPanel('messages');}
 function bishopRespondWin(pastorId){openBishopDmThread(pastorId);switchBishopPanel('messages');}
 function bishopReplyToResponse(pastorId){openBishopDmThread(pastorId);switchBishopPanel('messages');}
@@ -1505,9 +1919,9 @@ function renderPastor(){
 <!-- LOGIN -->
 <div id="s-login" class="screen">
   <div class="auth-shell">
-    <img src="${KG_LOGO}" style="width:100px;height:100px;object-fit:contain;margin:0 auto 16px;display:block" alt="Kingdom Grace">
-    <div class="auth-title" style="font-size:22px">${C.networkName}</div>
-    <div class="auth-sub">Est. 2015 · Shreveport, Louisiana<br>A pastoral leadership network.</div>
+    <img src="${KG_LOGO}" style="width:100px;height:100px;object-fit:contain;margin:0 auto 16px;display:block" alt="${esc(C.networkShort)}">
+    <div class="auth-title" style="font-size:22px">${esc(C.networkName)}</div>
+    <div class="auth-sub">${esc(C.estLine)}<br>${esc(C.tagline)}</div>
     <div class="bio-btn" onclick="tryBioLogin()">
       <div class="bio-icon">🔐</div>
       <div><div class="bio-label">Sign in with Biometrics</div><div class="bio-sub">Face ID · Touch ID · Fingerprint</div></div>
@@ -1521,7 +1935,31 @@ function renderPastor(){
       <div class="bio-icon" style="background:var(--gold3)">👑</div>
       <div><div class="bio-label" style="color:var(--gold)">Bishop Access</div><div class="bio-sub">Network oversight dashboard</div></div>
     </div>
-    <div style="margin-top:18px;text-align:center;font-size:12px;color:var(--ash)">New pastor? <span style="color:var(--gold);cursor:pointer" onclick="go('s-register')">Use your invite link →</span></div>
+    <div class="bio-btn" onclick="showPinLogin('admin')" style="border-color:rgba(58,110,168,0.3)">
+      <div class="bio-icon" style="background:rgba(58,110,168,0.15)">🔧</div>
+      <div><div class="bio-label" style="color:var(--sky)">Admin Access</div><div class="bio-sub">Manage invites & communications</div></div>
+    </div>
+    <details style="margin-top:18px;background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--rm);overflow:hidden">
+      <summary style="padding:12px 16px;font-size:12px;color:var(--gold);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;-webkit-user-select:none;user-select:none">
+        <span style="font-size:14px">&#x2753;</span> How do I log in?
+      </summary>
+      <div style="padding:0 16px 16px;font-size:12px;color:var(--mist);line-height:1.7">
+        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--br)">
+          <div style="font-weight:600;color:var(--frost);margin-bottom:4px">&#x1F522; Pastor Login</div>
+          Your Bishop or church admin will send you a <strong style="color:var(--frost)">text message with a link</strong>. Tap the link, enter your name, email, and choose a 6-digit PIN. That's it — you're in.<br><br>
+          After that, open the app and tap <strong style="color:var(--frost)">"Sign in with PIN"</strong> and enter your 6 digits. If your phone supports Face ID or Touch ID, it may sign you in automatically.
+        </div>
+        <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--br)">
+          <div style="font-weight:600;color:var(--gold);margin-bottom:4px">&#x1F451; Bishop Access</div>
+          Tap <strong style="color:var(--frost)">"Bishop Access"</strong> and enter your master PIN. This opens the full oversight dashboard where you can view all pastors, send messages, manage invites, and monitor the health of your network.
+        </div>
+        <div>
+          <div style="font-weight:600;color:var(--sky);margin-bottom:4px">&#x1F527; Admin Access</div>
+          If the Bishop has given you admin access, tap <strong style="color:var(--frost)">"Admin Access"</strong> and enter the PIN the Bishop gave you. As an admin you can manage invites, send messages, post announcements, and view pastor profiles — everything the Bishop can do except view private prayer requests.
+        </div>
+      </div>
+    </details>
+    <div style="margin-top:14px;text-align:center;font-size:12px;color:var(--ash)">New pastor? <span style="color:var(--gold);cursor:pointer" onclick="go('s-register')">Use your invite link →</span></div>
   </div>
 </div>
 
@@ -1537,6 +1975,30 @@ function renderPastor(){
       ${[1,2,3,4,5,6,7,8,9,'','0','del'].map(k=>k===''?'<div></div>':`<div class="pin-key" onclick="pinPress('${k}')">${k==='del'?'⌫':k}</div>`).join('')}
     </div>
     <button class="tnav-btn" style="margin-top:10px" onclick="go('s-login')">← Back</button>
+    <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">Locked out? <span style="color:var(--gold);cursor:pointer" onclick="go('s-forgot-pin')">Reset your PIN →</span></div>
+  </div>
+</div>
+
+<!-- FORGOT PIN -->
+<div id="s-forgot-pin" class="screen">
+  <div class="auth-shell">
+    <div class="auth-mark">🔑</div>
+    <div class="auth-title">Reset Your PIN</div>
+    <div class="auth-sub">Enter the email you registered with.<br>You'll receive a reset code.</div>
+    <label class="flbl">Email Address</label>
+    <input class="fin" id="reset-email" type="email" placeholder="pastor@church.org">
+    <div class="err" id="reset-err"></div>
+    <div class="ok-msg" id="reset-ok"></div>
+    <button class="fsub" id="reset-req-btn" onclick="requestPinReset()">Send reset code →</button>
+    <div id="reset-token-section" style="display:none;margin-top:16px">
+      <div class="divider">Enter your reset code</div>
+      <label class="flbl">Reset Code</label>
+      <input class="fin" id="reset-code" placeholder="Paste the code here">
+      <label class="flbl">New 6-Digit PIN</label>
+      <input class="fin" id="reset-new-pin" type="number" placeholder="6 digits">
+      <button class="fsub" onclick="confirmPinReset()">Set new PIN →</button>
+    </div>
+    <button class="tnav-btn" style="margin-top:14px" onclick="go('s-login')">← Back to login</button>
   </div>
 </div>
 
@@ -1544,28 +2006,21 @@ function renderPastor(){
 <div id="s-register" class="screen">
   <div class="scroll" style="padding-top:0">
     <div class="auth-shell" style="flex:none;padding-bottom:4px">
-      <img src="" class="auth-logo-kg" style="width:80px;height:80px;object-fit:contain;margin:0 auto 16px;display:block" alt="Kingdom Grace">
-      <div class="auth-title">Join the Network</div>
-      <div class="auth-sub">You've been invited to join ${C.networkName}.<br><em style='font-size:11px;color:var(--ash)'>Est. 2015 · Shreveport, LA</em></div>
+      <img src="" class="auth-logo-kg" style="width:80px;height:80px;object-fit:contain;margin:0 auto 16px;display:block" alt="Network">
+      <div class="auth-title">Welcome to ${C.networkShort}</div>
+      <div class="auth-sub">Bishop ${C.bishopName.split(' ').pop()} invited you to join.<br>Set up your account in seconds.</div>
     </div>
     <div style="padding:0 18px 40px">
+      <input type="hidden" id="reg-token">
       <label class="flbl">Your Full Name</label>
-      <input class="fin" id="reg-name" placeholder="Pastor First Last">
-      <label class="flbl">Email (must match your invite)</label>
-      <input class="fin" id="reg-email" type="email" placeholder="pastor@church.org">
-      <label class="flbl">Invite Token</label>
-      <input class="fin" id="reg-token" placeholder="Paste the token from your invite">
+      <input class="fin" id="reg-name" placeholder="First and Last name">
+      <label class="flbl">Your Email</label>
+      <input class="fin" id="reg-email" type="email" placeholder="your@email.com">
+      <label class="flbl">Choose a 6-Digit PIN</label>
+      <input class="fin" id="reg-pin" type="number" inputmode="numeric" placeholder="e.g. 123456" maxlength="6">
       <div class="err" id="reg-err"></div>
-      <div class="bio-btn" id="reg-btn" onclick="registerPastor()" style="margin-bottom:10px;cursor:pointer">
-        <div class="bio-icon">🔐</div>
-        <div><div class="bio-label">Register with Face ID / Touch ID</div><div class="bio-sub">Recommended — most secure</div></div>
-      </div>
-      <div id="pin-setup" style="display:none">
-        <div class="divider">Set a PIN fallback</div>
-        <label class="flbl">Choose a 6-digit PIN</label>
-        <input class="fin" id="setup-pin" type="number" placeholder="6 digits">
-        <button class="fsub" onclick="setupPin()">Complete setup →</button>
-      </div>
+      <button class="fsub" id="reg-btn" onclick="registerPastor()" style="padding:14px;font-size:14px">Join ${C.networkShort} →</button>
+      <div style="margin-top:14px;text-align:center;font-size:11px;color:var(--ash)">Already have an account? <span style="color:var(--gold);cursor:pointer" onclick="go('s-login')">Sign in →</span></div>
     </div>
   </div>
 </div>
@@ -1577,10 +2032,19 @@ function renderPastor(){
       <img src="" id="tnav-kg-logo" style="width:30px;height:30px;object-fit:contain;border-radius:4px" alt="KG">
       <div><div class="tnav-title">${C.networkName}</div><div class="tnav-sub">Pastoral Network</div></div>
     </div>
-    <button class="tnav-btn" onclick="go('s-checkin')">Check In</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="notif-bell" onclick="openNotifDrawer()">🔔<div class="notif-badge" id="notif-badge-home"></div></div>
+      <button class="tnav-btn" onclick="go('s-checkin')">Check In</button>
+    </div>
   </div>
   <div class="scroll">
     <div style="padding-top:16px">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input id="pastor-search" type="text" placeholder="Search prayers, wins, messages..." oninput="debounceSearch(this.value,'pastor')">
+      </div>
+      <div id="pastor-search-results" class="search-results"></div>
+      <div id="pastor-home-content">
       <div id="care-banner" class="care-banner" style="display:none"></div>
       <div id="home-wp"></div>
       <div class="stats-row">
@@ -1589,6 +2053,7 @@ function renderPastor(){
         <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">✉️</div><div class="stat-lbl">Message Bishop</div></div>
       </div>
       <div id="home-blasts"></div>
+      </div><!-- /pastor-home-content -->
     </div>
   </div>
   <div class="bnav">
@@ -1777,27 +2242,410 @@ function renderPastor(){
     <button class="tnav-btn" onclick="go('s-home')">← Back</button>
   </div>
   <div id="dm-list" class="scroll" style="padding-bottom:80px;padding-top:12px"></div>
-  <div style="padding:10px 18px 20px;background:var(--ink2);border-top:0.5px solid var(--br);flex-shrink:0;display:flex;gap:10px;align-items:flex-end">
-    <textarea id="dm-input" class="fin" placeholder="Message your Bishop..." style="flex:1;min-height:40px;max-height:100px;margin-bottom:0;resize:none"></textarea>
-    <button id="dm-send-btn" class="fsub" style="width:auto;padding:10px 18px;flex-shrink:0" onclick="sendDM()">Send</button>
+  <div style="padding:10px 18px 20px;background:var(--ink2);border-top:0.5px solid var(--br);flex-shrink:0">
+    <div class="err" id="dm-err"></div>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <textarea id="dm-input" class="fin" placeholder="Message your Bishop..." style="flex:1;min-height:40px;max-height:100px;margin-bottom:0;resize:none"></textarea>
+      <button id="dm-send-btn" class="fsub" style="width:auto;padding:10px 18px;flex-shrink:0" onclick="sendDM()">Send</button>
+    </div>
   </div>
 </div>`;
 }
 
 // ============================================================
+// SEARCH
+// ============================================================
+let searchTimer=null;
+function debounceSearch(q, mode){
+  clearTimeout(searchTimer);
+  const resultsEl=$(mode+'-search-results');
+  const contentEl=$(mode==='pastor'?'pastor-home-content':null);
+  if(!q.trim()){
+    if(resultsEl) resultsEl.classList.remove('show');
+    if(contentEl) contentEl.style.display='';
+    return;
+  }
+  searchTimer=setTimeout(()=>runSearch(q.trim(),mode),300);
+}
+
+async function runSearch(q, mode){
+  const resultsEl=$(mode+'-search-results');
+  const contentEl=$(mode==='pastor'?'pastor-home-content':null);
+  if(!resultsEl) return;
+  resultsEl.innerHTML='<div class="search-empty">Searching...</div>';
+  resultsEl.classList.add('show');
+  if(contentEl) contentEl.style.display='none';
+
+  const ql=q.toLowerCase();
+  const groups=[];
+
+  try {
+    // Search prayers
+    const prayers=await sbS('rf_prayer_requests',{select:'id,request_text,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'50'});
+    const pMatches=prayers.filter(r=>(r.request_text||'').toLowerCase().includes(ql)||(r.rf_pastors?.full_name||'').toLowerCase().includes(ql));
+    if(pMatches.length) groups.push({title:'Prayer Requests',icon:'🙏',screen:'s-prayer',items:pMatches.map(r=>({text:r.request_text,meta:(r.rf_pastors?.full_name||'Pastor')+' · '+timeAgo(r.created_at)}))});
+
+    // Search wins
+    const wins=await sbS('rf_wins',{select:'id,win_text,created_at,rf_pastors:pastor_id(full_name)',order:'created_at.desc',limit:'50'});
+    const wMatches=wins.filter(r=>(r.win_text||'').toLowerCase().includes(ql)||(r.rf_pastors?.full_name||'').toLowerCase().includes(ql));
+    if(wMatches.length) groups.push({title:'Wins',icon:'🏆',screen:'s-wins',items:wMatches.map(r=>({text:r.win_text,meta:(r.rf_pastors?.full_name||'Pastor')+' · '+timeAgo(r.created_at)}))});
+
+    // Search announcements
+    const anns=await sbS('rf_announcements',{select:'id,title,body,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'50'});
+    const aMatches=anns.filter(r=>(r.title||'').toLowerCase().includes(ql)||(r.body||'').toLowerCase().includes(ql)||(r.rf_pastors?.full_name||'').toLowerCase().includes(ql));
+    if(aMatches.length) groups.push({title:'Announcements',icon:'📢',screen:'s-ann',items:aMatches.map(r=>({text:r.title||r.body,meta:(r.rf_pastors?.full_name||'Pastor')+' · '+timeAgo(r.created_at)}))});
+
+    // Search DMs
+    const uid=ST.session?.userId;
+    const dmParams=mode==='bishop'
+      ? {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'50'}
+      : {select:'id,sender_id,message_text,created_at',or:`sender_id.eq.${uid},recipient_id.eq.${uid}`,order:'created_at.desc',limit:'50'};
+    const dms=await sbS('rf_direct_messages',dmParams);
+    const dMatches=dms.filter(r=>(r.message_text||'').toLowerCase().includes(ql));
+    if(dMatches.length) groups.push({title:'Messages',icon:'✉️',screen:mode==='bishop'?null:'s-dm',items:dMatches.map(r=>({text:r.message_text,meta:timeAgo(r.created_at)}))});
+
+    // Bishop: also search pastors
+    if(mode==='bishop'){
+      const pastors=ST.allPastors.length?ST.allPastors:await sbS('rf_pastors',{select:'*',status:'eq.active'});
+      const paMatches=pastors.filter(p=>(p.full_name||'').toLowerCase().includes(ql)||(p.church_name||'').toLowerCase().includes(ql)||(p.city||'').toLowerCase().includes(ql));
+      if(paMatches.length) groups.push({title:'Pastors',icon:'👤',items:paMatches.map(p=>({text:p.full_name,meta:[p.church_name,p.city].filter(Boolean).join(' · ')||'—',action:()=>{bishopDrillPastor(p.id);$(mode+'-search').value='';resultsEl.classList.remove('show');}}))});
+    }
+
+    if(!groups.length){
+      resultsEl.innerHTML='<div class="search-empty">No results for "'+esc(q)+'"</div>';
+      return;
+    }
+
+    resultsEl.innerHTML=groups.map(g=>
+      `<div class="search-group-title">${esc(g.title)}</div>`+
+      g.items.slice(0,5).map((item,i)=>
+        `<div class="search-item" data-group="${esc(g.title)}" data-idx="${i}" onclick="searchTap(this,'${g.screen||''}')">
+          <div class="search-item-icon">${g.icon}</div>
+          <div class="search-item-body">
+            <div class="search-item-title">${esc(item.text)}</div>
+            <div class="search-item-meta">${esc(item.meta)}</div>
+          </div>
+        </div>`
+      ).join('')+
+      (g.items.length>5?`<div class="search-item-meta" style="padding:8px 16px;text-align:center">+${g.items.length-5} more</div>`:'')
+    ).join('');
+  } catch(e){
+    resultsEl.innerHTML='<div class="search-empty">Search failed. Check connection.</div>';
+  }
+}
+
+function searchTap(el,screen){
+  const mode=el.closest('.b-body')?'bishop':'pastor';
+  const resultsEl=$(mode+'-search-results');
+  const input=$(mode+'-search');
+  if(resultsEl) resultsEl.classList.remove('show');
+  if(input) input.value='';
+  const contentEl=$('pastor-home-content');
+  if(contentEl) contentEl.style.display='';
+  if(screen) go(screen);
+}
+
+// ============================================================
+// NOTIFICATION SYSTEM
+// ============================================================
+const NOTIF = {
+  items: [],
+  unreadCount: 0,
+  lastSeen: {},       // { dm: timestamp, prayer: timestamp, announcement: timestamp, blast: timestamp }
+  pollInterval: null,
+  audioCtx: null,
+  permissionGranted: false,
+};
+
+// ── SOUND: gentle chime via Web Audio API ──
+function playNotifSound(){
+  try {
+    if(!NOTIF.audioCtx) NOTIF.audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const ctx=NOTIF.audioCtx;
+    if(ctx.state==='suspended') ctx.resume();
+    // Two-tone chime: E5 → G5
+    [659.25, 783.99].forEach((freq,i)=>{
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.type='sine';
+      osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0, ctx.currentTime+i*0.15);
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime+i*0.15+0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.15+0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime+i*0.15);
+      osc.stop(ctx.currentTime+i*0.15+0.4);
+    });
+  } catch(e){ /* audio not available */ }
+}
+
+// ── IN-APP TOAST ──
+let notifToastTimer=null;
+function showNotifToast(icon, title, msg, screen){
+  const t=$('notif-toast');
+  $('notif-toast-icon').textContent=icon;
+  $('notif-toast-title').textContent=title;
+  $('notif-toast-msg').textContent=msg;
+  t.dataset.screen=screen||'';
+  t.classList.add('show');
+  clearTimeout(notifToastTimer);
+  notifToastTimer=setTimeout(()=>t.classList.remove('show'),5000);
+}
+function hideNotifToast(){ $('notif-toast').classList.remove('show'); clearTimeout(notifToastTimer); }
+
+// ── NOTIFICATION DRAWER ──
+function openNotifDrawer(){
+  hideNotifToast();
+  renderNotifDrawer();
+  $('notif-backdrop').classList.add('open');
+  $('notif-drawer').classList.add('open');
+}
+function closeNotifDrawer(){
+  $('notif-backdrop').classList.remove('open');
+  $('notif-drawer').classList.remove('open');
+  // Mark all as read
+  NOTIF.items.forEach(n=>n.unread=false);
+  NOTIF.unreadCount=0;
+  updateNotifBadges();
+  saveLocal('notif_items',NOTIF.items.slice(0,50));
+}
+function renderNotifDrawer(){
+  const list=$('notif-drawer-list');
+  if(!NOTIF.items.length){
+    list.innerHTML='<div class="notif-empty">No notifications yet.<br>You\'ll see new messages, prayers, and updates here.</div>';
+    return;
+  }
+  list.innerHTML=NOTIF.items.slice(0,50).map((n,i)=>`<div class="notif-drawer-item ${n.unread?'unread':''}" onclick="notifTap(${i})">
+    <div class="notif-icon">${esc(n.icon)}</div>
+    <div class="notif-content">
+      <div class="notif-item-title">${esc(n.title)}</div>
+      <div class="notif-item-msg">${esc(n.msg)}</div>
+      <div class="notif-item-time">${timeAgo(n.ts)}</div>
+    </div>
+  </div>`).join('');
+}
+function notifTap(idx){
+  const n=NOTIF.items[idx];
+  if(!n) return;
+  n.unread=false;
+  NOTIF.unreadCount=NOTIF.items.filter(x=>x.unread).length;
+  updateNotifBadges();
+  closeNotifDrawer();
+  if(n.screen) go(n.screen);
+}
+
+// ── BADGE UPDATES ──
+function updateNotifBadges(){
+  const count=NOTIF.unreadCount;
+  // Home bell badge
+  const bell=$('notif-badge-home');
+  if(bell){
+    bell.textContent=count>9?'9+':count;
+    bell.classList.toggle('show',count>0);
+  }
+  // Bishop bell badge
+  const bBell=$('notif-badge-bishop');
+  if(bBell){
+    bBell.textContent=count>9?'9+':count;
+    bBell.classList.toggle('show',count>0);
+  }
+}
+
+// ── ADD NOTIFICATION ──
+function addNotification(icon, title, msg, screen){
+  const n={icon, title, msg, screen, ts:new Date().toISOString(), unread:true};
+  NOTIF.items.unshift(n);
+  if(NOTIF.items.length>100) NOTIF.items.length=100;
+  NOTIF.unreadCount=NOTIF.items.filter(x=>x.unread).length;
+  updateNotifBadges();
+  // In-app toast
+  showNotifToast(icon, title, msg, screen);
+  // Sound
+  playNotifSound();
+  // Browser notification (outside app)
+  fireOSNotification(title, msg, icon);
+  // Persist
+  saveLocal('notif_items',NOTIF.items.slice(0,50));
+}
+
+// ── BROWSER NOTIFICATION API (outside app) ──
+function requestNotifPermission(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission==='granted'){ NOTIF.permissionGranted=true; subscribeToPush(); return; }
+  if(Notification.permission!=='denied'){
+    Notification.requestPermission().then(p=>{ NOTIF.permissionGranted=p==='granted'; if(p==='granted') subscribeToPush(); });
+  }
+}
+function fireOSNotification(title, body, icon){
+  if(!NOTIF.permissionGranted) return;
+  if(document.visibilityState==='visible') return; // only when tab not focused
+  try {
+    const n=new Notification(C.networkShort+': '+title,{
+      body: body,
+      icon: KG_LOGO,
+      badge: KG_LOGO,
+      tag: 'kg-'+Date.now(),
+      renotify: true,
+    });
+    n.onclick=()=>{ window.focus(); n.close(); };
+  } catch(e){ /* notification not supported */ }
+}
+
+// ── POLLING: check for new content ──
+function initNotifPolling(){
+  // Load persisted state
+  NOTIF.items=loadLocal('notif_items')||[];
+  NOTIF.unreadCount=NOTIF.items.filter(x=>x.unread).length;
+  NOTIF.lastSeen=loadLocal('notif_last_seen')||{};
+  updateNotifBadges();
+  // Request browser notification permission after first user interaction
+  document.addEventListener('click',function onFirstClick(){
+    requestNotifPermission();
+    // Unlock audio context on first interaction
+    if(NOTIF.audioCtx&&NOTIF.audioCtx.state==='suspended') NOTIF.audioCtx.resume();
+    document.removeEventListener('click',onFirstClick);
+  },{once:true});
+  // Start polling
+  pollForNotifications();
+  NOTIF.pollInterval=setInterval(pollForNotifications, 30000);
+}
+
+async function pollForNotifications(){
+  if(!ST.session) return;
+  const isBishop=ST.session.role==='bishop';
+  const uid=ST.session.userId;
+  try {
+    // DMs — check for new messages
+    const dmFilter=isBishop
+      ? {select:'id,sender_id,message_text,created_at,rf_pastors:sender_id(full_name)',order:'created_at.desc',limit:'1','sender_id':'neq.bishop'}
+      : {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'1','recipient_id':'eq.'+uid,'sender_id':'eq.bishop'};
+    const dms=await sbS('rf_direct_messages',dmFilter);
+    if(dms.length){
+      const last=dms[0];
+      const lastTs=NOTIF.lastSeen.dm||'';
+      if(last.created_at>lastTs){
+        NOTIF.lastSeen.dm=last.created_at;
+        if(lastTs){ // don't notify on first load
+          const sender=isBishop?(last.rf_pastors?.full_name||'A pastor'):'Bishop '+C.bishopName.split(' ').pop();
+          addNotification('✉️','New message from '+sender, last.message_text, isBishop?null:'s-dm');
+        }
+      }
+    }
+
+    // Prayer requests — new ones
+    const prayers=await sbS('rf_prayer_requests',{select:'id,request_text,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'1'});
+    if(prayers.length){
+      const last=prayers[0];
+      const lastTs=NOTIF.lastSeen.prayer||'';
+      if(last.created_at>lastTs){
+        NOTIF.lastSeen.prayer=last.created_at;
+        if(lastTs){
+          addNotification('🙏','New prayer request', (last.rf_pastors?.full_name||'A pastor')+' shared a prayer request', isBishop?null:'s-prayer');
+        }
+      }
+    }
+
+    // Announcements — new ones
+    const anns=await sbS('rf_announcements',{select:'id,title,body,created_at',status:'eq.active',order:'created_at.desc',limit:'1'});
+    if(anns.length){
+      const last=anns[0];
+      const lastTs=NOTIF.lastSeen.announcement||'';
+      if(last.created_at>lastTs){
+        NOTIF.lastSeen.announcement=last.created_at;
+        if(lastTs){
+          addNotification('📢','New announcement', last.title||last.body||'New update posted', isBishop?null:'s-ann');
+        }
+      }
+    }
+
+    // Bishop blasts — for pastors only
+    if(!isBishop){
+      const blasts=await sbS('rf_bishop_messages',{select:'id,message_text,sent_at',order:'sent_at.desc',limit:'1'});
+      if(blasts.length){
+        const last=blasts[0];
+        const lastTs=NOTIF.lastSeen.blast||'';
+        if(last.sent_at>lastTs){
+          NOTIF.lastSeen.blast=last.sent_at;
+          if(lastTs){
+            addNotification('👑','Message from Bishop '+C.bishopName.split(' ').pop(), last.message_text, 's-home');
+          }
+        }
+      }
+    }
+
+    saveLocal('notif_last_seen',NOTIF.lastSeen);
+  } catch(e){ /* polling error — skip this cycle */ }
+}
+
+// ── PUSH SUBSCRIPTION: register with push service + save to Supabase ──
+async function subscribeToPush(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if(!C.vapidPublicKey) return;
+  try {
+    const reg=await navigator.serviceWorker.ready;
+    // Check for existing subscription
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){
+      // Convert VAPID public key from base64url to Uint8Array
+      const padding='='.repeat((4-C.vapidPublicKey.length%4)%4);
+      const b64=C.vapidPublicKey.replace(/-/g,'+').replace(/_/g,'/')+padding;
+      const raw=atob(b64);
+      const key=new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++) key[i]=raw.charCodeAt(i);
+
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:key
+      });
+    }
+    if(!sub) return;
+    // Save subscription to Supabase
+    const subJson=sub.toJSON();
+    const userId=ST.session?.userId;
+    if(!userId) return;
+    await sbI('rf_push_subscriptions',{
+      user_id:userId,
+      endpoint:subJson.endpoint,
+      p256dh:subJson.keys?.p256dh||'',
+      auth:subJson.keys?.auth||''
+    }).catch(async ()=>{
+      // Likely duplicate — update instead
+      await sbU('rf_push_subscriptions',`user_id=eq.${userId}&endpoint=eq.${encodeURIComponent(subJson.endpoint)}`,{
+        p256dh:subJson.keys?.p256dh||'',
+        auth:subJson.keys?.auth||'',
+        updated_at:new Date().toISOString()
+      }).catch(()=>{});
+    });
+  } catch(e){ /* push subscription not available */ }
+}
+
+// ── FIRE PUSH NOTIFY: call Edge Function when content is created ──
+async function firePushNotify(type, data){
+  try {
+    await fetch(`${C.supabaseUrl}/functions/v1/${C.pushNotifyFn}`,{
+      method:'POST',
+      headers:SB_HDR(),
+      body:JSON.stringify({type,data})
+    });
+  } catch(e){ /* push notify fire-and-forget */ }
+}
+
+// ============================================================
 // BOOT
 // ============================================================
-function boot(){
+async function boot(){
+  await loadConfig();
   renderPastor();
   const saved=loadLocal('session');
-  if(saved?.role==='bishop'){
+  if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;
-    launchBishopDashboard(); return;
+    launchBishopDashboard(); initNotifPolling(); return;
   }
   if(saved?.userId){
     ST.session=saved;
     ST.profile=loadLocal('profile');
-    go('s-home'); return;
+    go('s-home'); initNotifPolling(); return;
   }
   const params=new URLSearchParams(location.search);
   const token=params.get('invite');

@@ -215,3 +215,39 @@ self.addEventListener('message', (e) => {
     });
   }
 });
+
+// ── PUSH NOTIFICATIONS: receive server-sent push events ──
+self.addEventListener('push', (e) => {
+  let data = { title: 'Kingdom Grace', body: 'You have a new notification', icon: '/icons/kg-logo.jpg' };
+  if (e.data) {
+    try { data = { ...data, ...e.data.json() }; } catch { data.body = e.data.text(); }
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: data.icon || '/icons/kg-logo.jpg',
+      badge: '/icons/kg-logo.jpg',
+      tag: data.tag || 'kg-push-' + Date.now(),
+      renotify: true,
+      data: { screen: data.screen || null, url: data.url || '/' }
+    })
+  );
+});
+
+// ── NOTIFICATION CLICK: open/focus the app ──
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Focus existing tab if available
+      for (const client of clients) {
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise open a new tab
+      return self.clients.openWindow(url);
+    })
+  );
+});
