@@ -11,14 +11,14 @@
 
 ### Priority Tasks
 
-- [ ] **Bishop Profile Page** — Dedicated page for Bishop Peter Sasser with his photo, bio, and a photo of him and his wife. Accessible from the dashboard and visible to all pastors.
+- [x] **Bishop Profile Page** — Dedicated page for Bishop Peter Sasser with photo, bio, and couple photo. Accessible from dashboard (Bishop tab) and pastor home screen (Leadership section).
 
-- [ ] **Apostle Ericka Sasser Page** — Dedicated page for Apostle Ericka Sasser (Bishop's wife) with her photo and bio. Same style as the Bishop's page.
+- [x] **Apostle Ericka Sasser Page** — Dedicated page for Apostle Ericka Sasser with photo and bio. Same style as Bishop's page. Accessible from dashboard (Apostle Ericka tab) and pastor home screen.
 
-- [ ] **Blast Message Branding** — Change bishop blast messages to display as **"From the Desk of the Bishop"** instead of the current generic "From Bishop Sasser" format. Apply to:
+- [x] **Blast Message Branding** — Changed to **"From the Desk of the Bishop"** across:
   - Home screen blast display
-  - Push notification title
-  - Message history
+  - Push notification title (edge function redeployed)
+  - Bishop compose area
 
 ### Notes
 
@@ -115,10 +115,10 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 
 | Task | Priority | Status |
 |------|----------|--------|
-| Run migration SQL in Supabase SQL editor | HIGH | Pending |
-| Deploy `kgfcm-ai-proxy` edge function to Supabase | HIGH | Pending |
-| Deploy push notification edge functions | HIGH | Pending |
-| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | Pending |
+| Run migration SQL in Supabase SQL editor | HIGH | DONE |
+| Deploy `kgfcm-ai-proxy` edge function to Supabase | HIGH | DONE |
+| Deploy push notification edge functions | HIGH | DONE (push-send, push-notify, checkin-remind) |
+| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | Verify in Supabase dashboard |
 | Connect repo to Vercel for auto-deploy | HIGH | Pending |
 | Schedule weekly post count reset cron job | LOW | Pending |
 | Add custom domain in Vercel | LOW | Pending |

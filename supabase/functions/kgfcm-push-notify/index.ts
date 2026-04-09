@@ -104,8 +104,8 @@ serve(async (req: Request) => {
         const pastorIds = await getAllUserIds();
         pushPayload = {
           user_ids: pastorIds,
-          title: `Message from Bishop ${data.bishop_name || ""}`.trim(),
-          body: truncate(data.message_text || "New message from your Bishop", 100),
+          title: "From the Desk of the Bishop",
+          body: truncate(data.message_text || "A new word from your Bishop", 100),
           icon: "👑",
           screen: "s-home",
           tag: "blast-new",

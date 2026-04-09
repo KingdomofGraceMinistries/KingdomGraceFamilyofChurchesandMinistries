@@ -649,7 +649,7 @@ async function submitPin(){
 // PASTOR NAVIGATION
 // ============================================================
 function go(id){
-  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann'];
+  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
   document.querySelectorAll('#app .screen').forEach(s=>s.classList.remove('active'));
   const s=$(id); if(s){ s.classList.add('active'); onScreen(id); }
@@ -694,7 +694,7 @@ async function loadHome(){
       const msgs=await sbS('rf_bishop_messages',{select:'*',order:'sent_at.desc',limit:'5'});
       if(msgs.length) blastsEl.innerHTML=`
         <div style="margin-top:16px">
-          <div class="flbl" style="margin-bottom:10px">📣 From Bishop ${C.bishopName.split(' ').pop()}</div>
+          <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">📜 From the Desk of the Bishop</div>
           ${msgs.map(m=>`<div class="card" style="border-left:2px solid var(--gold)">
             <div style="font-size:13px;color:var(--frost);line-height:1.6">${esc(m.message_text)}</div>
             <div style="font-size:10px;color:var(--ash);margin-top:6px">${timeAgo(m.sent_at)}</div>
@@ -1265,6 +1265,8 @@ function renderBishopDashboard(){
       <button class="b-tab" onclick="switchBishopPanel('messages')">Messages</button>
       <button class="b-tab" onclick="switchBishopPanel('invites')">Invites</button>
       ${isBishop()?'<button class="b-tab" onclick="switchBishopPanel(\'manage-admins\')">Admins</button>':''}
+      <button class="b-tab" onclick="switchBishopPanel('bishop-profile')">Bishop</button>
+      <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">Apostle Ericka</button>
       <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
       <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
       <button class="b-signout" onclick="logout()">Sign out</button>
@@ -1286,6 +1288,8 @@ function renderBishopDashboard(){
     <div id="bp-invites" class="b-panel"></div>
     <div id="bp-pastor-detail" class="b-panel"></div>
     <div id="bp-manage-admins" class="b-panel"></div>
+    <div id="bp-bishop-profile" class="b-panel"></div>
+    <div id="bp-apostle-ericka" class="b-panel"></div>
     <div id="bp-help" class="b-panel"></div>
   </div>
   <div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>`;
@@ -1312,6 +1316,8 @@ function switchBishopPanel(panel){
   else if(panel==='messages') loadBishopMessages();
   else if(panel==='invites') loadBishopInvites();
   else if(panel==='manage-admins') loadManageAdmins();
+  else if(panel==='bishop-profile') loadBishopProfile();
+  else if(panel==='apostle-ericka') loadApostleEricka();
   else if(panel==='help') loadHelp();
 }
 
@@ -1537,7 +1543,7 @@ async function loadBishopMessages(){
           </div>
           <div style="padding:12px 16px;border-top:0.5px solid var(--br)">
             <div class="b-compose">
-              <div class="b-compose-title">Blast to all pastors</div>
+              <div class="b-compose-title" style="font-family:'Cormorant Garamond',serif;letter-spacing:1px">📜 From the Desk of the Bishop</div>
               <textarea class="fin" id="b-blast-input" style="margin-bottom:8px;min-height:60px" placeholder="A word for the entire team..."></textarea>
               <div class="err" id="b-blast-err"></div>
               <div class="ok-msg" id="b-blast-ok"></div>
@@ -1599,10 +1605,62 @@ async function sendBishopBlast(){
   try {
     await sbI('rf_bishop_messages',{message_text:text,type:'blast',sent_at:new Date().toISOString()});
     audit('BISHOP_BLAST_SENT',{table:'rf_bishop_messages',recipientCount:'all'});
-    firePushNotify('blast',{bishop_name:C.bishopName.split(' ').pop(),message_text:text});
+    firePushNotify('blast',{message_text:text});
     ta.value=''; showOk('b-blast-ok','Sent to all pastors.');
   } catch(e){showErr('b-blast-err','Could not send.');}
   btn.disabled=false; btn.textContent='Send to all →';
+}
+
+function loadBishopProfile(){
+  const panel=$('bp-bishop-profile'); if(!panel) return;
+  panel.innerHTML=`
+    <div style="max-width:600px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="width:160px;height:160px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
+          <img id="bishop-profile-photo" src="${esc(C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="Bishop Photo"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\\'>👑</div>'">
+        </div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">${esc(C.bishopName)}</h2>
+        <div style="font-size:14px;color:var(--mist);letter-spacing:1px">${esc(C.bishopTitle)}</div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold)">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About the Bishop</div>
+        <div id="bishop-bio-text" style="font-size:13px;color:var(--frost);line-height:1.8">
+          Bishop Peter Sasser is the Presiding Bishop and founder of Kingdom Grace Family of Churches and Ministries, established in 2015. With a heart for pastoral care and kingdom building, Bishop Sasser leads with a vision to strengthen, equip, and unify pastors across the network. His ministry is rooted in grace, accountability, and the empowerment of local church leaders.
+        </div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold);margin-top:16px">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">The Bishop & First Lady</div>
+        <div style="width:100%;border-radius:8px;overflow:hidden;background:var(--ink3);margin-bottom:12px">
+          <img id="bishop-couple-photo" src="${esc(C.logoUrl)}" style="width:100%;object-fit:cover;max-height:300px" alt="Bishop & First Lady"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'padding:40px;text-align:center;color:var(--ash);font-size:13px\\'>Photo coming soon</div>'">
+        </div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8">
+          Bishop Peter Sasser and Apostle Ericka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
+        </div>
+      </div>
+    </div>`;
+}
+
+function loadApostleEricka(){
+  const panel=$('bp-apostle-ericka'); if(!panel) return;
+  panel.innerHTML=`
+    <div style="max-width:600px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="width:160px;height:160px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
+          <img id="apostle-ericka-photo" src="${esc(C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Ericka Photo"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\\'>🕊️</div>'">
+        </div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">Apostle Ericka Sasser</h2>
+        <div style="font-size:14px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold)">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About Apostle Ericka</div>
+        <div id="apostle-ericka-bio" style="font-size:13px;color:var(--frost);line-height:1.8">
+          Apostle Ericka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Ericka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
+        </div>
+      </div>
+    </div>`;
 }
 
 async function loadBishopInvites(){
@@ -2059,12 +2117,103 @@ function renderPastor(){
         <div class="stat-box" onclick="go('s-wins')"><div class="stat-num">🏆</div><div class="stat-lbl">Wins Wall</div></div>
         <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">✉️</div><div class="stat-lbl">Message Bishop</div></div>
       </div>
+      <div id="home-leadership" style="margin-bottom:16px">
+        <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">👑 Our Leadership</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="card" onclick="go('s-bishop-profile')" style="cursor:pointer;text-align:center;padding:16px 8px">
+            <div style="font-size:28px;margin-bottom:6px">👑</div>
+            <div style="font-size:13px;font-weight:500;color:var(--frost)" id="home-bishop-name">Bishop Peter Sasser</div>
+            <div style="font-size:11px;color:var(--mist)">Presiding Bishop</div>
+          </div>
+          <div class="card" onclick="go('s-apostle-ericka')" style="cursor:pointer;text-align:center;padding:16px 8px">
+            <div style="font-size:28px;margin-bottom:6px">🕊️</div>
+            <div style="font-size:13px;font-weight:500;color:var(--frost)">Apostle Ericka Sasser</div>
+            <div style="font-size:11px;color:var(--mist)">First Lady</div>
+          </div>
+        </div>
+      </div>
       <div id="home-blasts"></div>
       </div><!-- /pastor-home-content -->
     </div>
   </div>
   <div class="bnav">
     <div class="bn on" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- BISHOP PROFILE (pastor-facing) -->
+<div id="s-bishop-profile" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">👑</div><div><div class="tnav-title">${C.bishopName}</div><div class="tnav-sub">Presiding Bishop</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div style="padding:16px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
+          <img src="${C.logoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Bishop Photo"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\'>👑</div>'">
+        </div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">${C.bishopName}</h2>
+        <div style="font-size:13px;color:var(--mist);letter-spacing:1px">${C.bishopTitle}</div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold)">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About the Bishop</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8">
+          Bishop Peter Sasser is the Presiding Bishop and founder of Kingdom Grace Family of Churches and Ministries, established in 2015. With a heart for pastoral care and kingdom building, Bishop Sasser leads with a vision to strengthen, equip, and unify pastors across the network. His ministry is rooted in grace, accountability, and the empowerment of local church leaders.
+        </div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold);margin-top:12px">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">The Bishop & First Lady</div>
+        <div style="width:100%;border-radius:8px;overflow:hidden;background:var(--ink3);margin-bottom:12px">
+          <img src="${C.logoUrl}" style="width:100%;object-fit:cover;max-height:260px" alt="Bishop & First Lady"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'padding:30px;text-align:center;color:var(--ash);font-size:13px\'>Photo coming soon</div>'">
+        </div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8">
+          Bishop Peter Sasser and Apostle Ericka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- APOSTLE ERICKA (pastor-facing) -->
+<div id="s-apostle-ericka" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">🕊️</div><div><div class="tnav-title">Apostle Ericka Sasser</div><div class="tnav-sub">First Lady</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div style="padding:16px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
+          <img src="${C.logoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Ericka Photo"
+               onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\'>🕊️</div>'">
+        </div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">Apostle Ericka Sasser</h2>
+        <div style="font-size:13px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
+      </div>
+      <div class="card" style="border-left:2px solid var(--gold)">
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About Apostle Ericka</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8">
+          Apostle Ericka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Ericka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
     <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
     <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
     <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
