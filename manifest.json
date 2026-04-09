@@ -1,7 +1,7 @@
 {
-  "name": "Pastoral Network",
-  "short_name": "Pastoral Network",
-  "description": "Pastoral care, check-ins, prayer walls, and bishop oversight for your ministry network",
+  "name": "Kingdom Grace — Pastoral Network",
+  "short_name": "Kingdom Grace",
+  "description": "Pastoral care, check-ins, prayer walls, and bishop oversight for Kingdom Grace Family of Churches and Ministries",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -13,6 +13,12 @@
       "sizes": "843x843",
       "type": "image/jpeg",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/kg-logo.jpg",
+      "sizes": "843x843",
+      "type": "image/jpeg",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/icon-192.svg",
