@@ -646,14 +646,40 @@ async function submitPin(){
 }
 
 // ============================================================
-// PASTOR NAVIGATION
+// PASTOR NAVIGATION + BACK BUTTON HANDLING
 // ============================================================
-function go(id){
+const NAV={history:[],backTaps:0,backTimer:null};
+function go(id,skipPush){
   const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
+  const prev=document.querySelector('#app .screen.active');
+  if(prev&&prev.id===id) return;
+  if(prev&&!skipPush) NAV.history.push(prev.id);
+  if(!skipPush) history.pushState({screen:id},'',' ');
   document.querySelectorAll('#app .screen').forEach(s=>s.classList.remove('active'));
   const s=$(id); if(s){ s.classList.add('active'); onScreen(id); }
 }
+function goBack(){
+  if(NAV.history.length){
+    const prev=NAV.history.pop();
+    if(typeof prev==='object'&&prev.type==='bishop') switchBishopPanel(prev.panel,true);
+    else go(prev,true);
+    return true;
+  }
+  return false;
+}
+window.addEventListener('popstate',function(e){
+  if(goBack()) return;
+  // On root screen — require triple-tap to exit
+  NAV.backTaps++;
+  if(NAV.backTaps<3){
+    history.pushState({screen:'hold'},'',' ');
+    const remaining=3-NAV.backTaps;
+    showOnlineToast('Tap back '+(remaining===1?'once more':remaining+' more times')+' to exit');
+    clearTimeout(NAV.backTimer);
+    NAV.backTimer=setTimeout(()=>{NAV.backTaps=0;},1500);
+  }
+});
 function onScreen(id){
   if(id==='s-home') loadHome();
   else if(id==='s-team') loadTeam();
@@ -666,6 +692,7 @@ function onScreen(id){
 }
 function logout(){
   audit('LOGOUT',{});
+  NAV.history=[];NAV.backTaps=0;
   ST.session=null; ST.profile=null;
   localStorage.removeItem(C.appId+'_session');
   if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; }
@@ -1295,9 +1322,12 @@ function renderBishopDashboard(){
   <div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>`;
 }
 
-function switchBishopPanel(panel){
+function switchBishopPanel(panel,skipPush){
   // Block admin from accessing prayer wall
   if(panel==='prayer'&&isAdmin()) return;
+  const prev=ST.bishopPanel;
+  if(prev===panel) return;
+  if(prev&&!skipPush){ NAV.history.push({type:'bishop',panel:prev}); history.pushState({bishop:panel},'',' '); }
   ST.bishopPanel=panel;
   document.querySelectorAll('.b-tab').forEach(t=>t.classList.remove('on'));
   // Highlight the active tab by matching onclick content
@@ -2791,6 +2821,7 @@ async function firePushNotify(type, data){
 // BOOT
 // ============================================================
 async function boot(){
+  history.replaceState({screen:'root'},'',' ');
   await loadConfig();
   renderPastor();
   const saved=loadLocal('session');
