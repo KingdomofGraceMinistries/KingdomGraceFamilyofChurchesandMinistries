@@ -662,7 +662,8 @@ function go(id,skipPush){
 function goBack(){
   if(NAV.history.length){
     const prev=NAV.history.pop();
-    if(typeof prev==='object'&&prev.type==='bishop') switchBishopPanel(prev.panel,true);
+    if(typeof prev==='object'&&prev.type==='dashboard') bishopBackToDashboard();
+    else if(typeof prev==='object'&&prev.type==='bishop') switchBishopPanel(prev.panel,true);
     else go(prev,true);
     return true;
   }
@@ -1267,6 +1268,19 @@ function launchBishopDashboard(){
   switchBishopPanel('overview');
 }
 
+function bishopViewApp(){
+  $('bishop-app').className='';
+  $('app').style.display='';
+  document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='');
+  NAV.history.push({type:'dashboard'});
+  history.pushState({screen:'s-home'},'',' ');
+  go('s-home',true);
+}
+function bishopBackToDashboard(){
+  document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='none');
+  $('app').style.display='none';
+  $('bishop-app').className='active';
+}
 function isBishop(){ return ST.session?.role==='bishop'; }
 function isAdmin(){ return ST.session?.role==='admin'; }
 function isDashboardUser(){ return isBishop()||isAdmin(); }
@@ -1295,6 +1309,7 @@ function renderBishopDashboard(){
       <button class="b-tab" onclick="switchBishopPanel('bishop-profile')">Bishop</button>
       <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">Apostle Ericka</button>
       <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
+      <button class="b-tab" onclick="bishopViewApp()" style="background:var(--gold);color:var(--ink);font-weight:600">🏠 View App</button>
       <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
       <button class="b-signout" onclick="logout()">Sign out</button>
     </div>
@@ -2130,6 +2145,7 @@ function renderPastor(){
     <div style="display:flex;align-items:center;gap:8px">
       <div class="notif-bell" onclick="openNotifDrawer()">🔔<div class="notif-badge" id="notif-badge-home"></div></div>
       <button class="tnav-btn" onclick="go('s-checkin')">Check In</button>
+      <button class="tnav-btn bishop-only" onclick="bishopBackToDashboard()" style="display:none;background:var(--gold);color:var(--ink)">← Dashboard</button>
     </div>
   </div>
   <div class="scroll">
