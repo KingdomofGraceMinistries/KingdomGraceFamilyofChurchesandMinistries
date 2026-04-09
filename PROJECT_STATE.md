@@ -1,9 +1,31 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-09
 **Status:** Pre-launch — finishing deployment checklist
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## Next Session (2026-04-10)
+
+### Priority Tasks
+
+- [ ] **Bishop Profile Page** — Dedicated page for Bishop Peter Sasser with his photo, bio, and a photo of him and his wife. Accessible from the dashboard and visible to all pastors.
+
+- [ ] **Apostle Ericka Sasser Page** — Dedicated page for Apostle Ericka Sasser (Bishop's wife) with her photo and bio. Same style as the Bishop's page.
+
+- [ ] **Blast Message Branding** — Change bishop blast messages to display as **"From the Desk of the Bishop"** instead of the current generic "From Bishop Sasser" format. Apply to:
+  - Home screen blast display
+  - Push notification title
+  - Message history
+
+### Notes
+
+- Bishop: Peter Sasser
+- Wife: Apostle Ericka Sasser
+- Will need: photos of Bishop, Apostle Ericka, and a photo of them together
+- Bio text for both — ask user to provide or draft from available info
 
 ---
 
@@ -19,7 +41,7 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 
 ## Completion Tracker
 
-### DONE
+### DONE — Original Build (2026-04-08)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -38,7 +60,7 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | Bishop blast messaging | DONE | Send + pastors can now read blasts on home screen |
 | Engagement charts (real data) | DONE | Queries rf_checkins + posts by week |
 | Offline support (service worker) | DONE | Cache-first app shell + IndexedDB mutation queue |
-| PWA manifest + icons | DONE | SVG icons, standalone display |
+| PWA manifest + icons | DONE | SVG icons + real logo JPG, standalone display |
 | Supabase key fallback (publishable → anon) | DONE | Future-proofed for key migration |
 | Footer (Envision VirtualEdge) | DONE | Both pastor and bishop views |
 | Database migration SQL | DONE | 9 tables + indexes + RLS + weekly reset function |
@@ -47,18 +69,59 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | vercel.json (routing + headers) | DONE | Security headers + SW support |
 | package.json | DONE | Metadata + local dev server |
 
+### DONE — Session 2 (2026-04-09)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Bug Fixes & Code Quality** | | |
+| XSS fix — `esc()` HTML escaper | DONE | Fixed 30+ innerHTML calls |
+| 3 stub functions implemented | DONE | encouragePrayer, bishopPrayFor, bishopCelebrate |
+| Error feedback on silent catch blocks | DONE | 11+ catch blocks now show toast |
+| Removed console.log from production | DONE | Clean production output |
+| **Notification System** | | |
+| In-app toast notifications + badge counts | DONE | Visual notification system |
+| Notification sound (Web Audio API chime) | DONE | Audio feedback |
+| Browser Notification API | DONE | Works when tab not focused |
+| 30-second polling for new content | DONE | DMs, prayers, announcements, blasts |
+| VAPID push notifications | DONE | Works when app is fully closed |
+| Service worker push + click handlers | DONE | sw.js updated |
+| Edge Functions: push-send, push-notify | DONE | Deployed to Supabase |
+| Edge Function: checkin-remind | DONE | Automated check-in reminders |
+| Push subscriptions migration | DONE | 20260409_002_push_subscriptions.sql |
+| **High Priority Features** | | |
+| Forgot PIN / PIN reset flow | DONE | Pastor + bishop-triggered reset |
+| Search across all content | DONE | Prayers, wins, messages, announcements, pastors |
+| Read receipts on DMs | DONE | Single check = sent, double gold = read |
+| Automated check-in reminders | DONE | Edge Function + overdue badges |
+| **Admin & Onboarding** | | |
+| Admin role with separate PIN login | DONE | Restricted dashboard access |
+| Simplified invite flow | DONE | Name → create → send via text/share/copy |
+| Simplified pastor registration | DONE | Link → name + email + PIN → done |
+| Login help dropdown | DONE | Explains all three roles |
+| **White Label** | | |
+| Branding in Supabase rf_network_config | DONE | All branding from database |
+| Bishop PIN in Supabase (hashed) | DONE | Removed from client code |
+| Dynamic manifest generation | DONE | From config table |
+| Zero hardcoded names/locations | DONE | Fully white-label |
+| **Documentation & Mobile** | | |
+| Bishop & Admin guide | DONE | GUIDE-bishop-admin.md |
+| In-app Help tab | DONE | 9 expandable sections |
+| Responsive bishop/admin dashboard | DONE | Phone-friendly layouts |
+| Horizontal scrolling tab bar | DONE | File cabinet style |
+| Two-column → single-column on mobile | DONE | Responsive collapse |
+| Cross-device PWA icons | DONE | apple-touch-icon, favicon, maskable |
+
 ### REMAINING — Deployment Checklist
 
-| Task | Priority | Estimated Effort |
-|------|----------|-----------------|
-| Run migration SQL in Supabase SQL editor | HIGH | 5 min |
-| Deploy `kgfcm-ai-proxy` edge function to Supabase | HIGH | 10 min |
-| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | 2 min |
-| Connect repo to Vercel for auto-deploy | HIGH | 5 min |
-| Replace bishop PIN "000000" with real PIN | MEDIUM | 2 min |
-| Convert SVG icons to PNG for broader PWA support | LOW | 10 min |
-| Schedule weekly post count reset cron job | LOW | 5 min |
-| Add custom domain in Vercel | LOW | 5 min |
+| Task | Priority | Status |
+|------|----------|--------|
+| Run migration SQL in Supabase SQL editor | HIGH | Pending |
+| Deploy `kgfcm-ai-proxy` edge function to Supabase | HIGH | Pending |
+| Deploy push notification edge functions | HIGH | Pending |
+| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | Pending |
+| Connect repo to Vercel for auto-deploy | HIGH | Pending |
+| Schedule weekly post count reset cron job | LOW | Pending |
+| Add custom domain in Vercel | LOW | Pending |
 
 ---
 
@@ -75,6 +138,8 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | rf_direct_messages | TBD | Migration ready |
 | rf_bishop_messages | TBD | Migration ready |
 | rf_announcements | TBD | Migration ready |
+| rf_network_config | TBD | Migration ready |
+| rf_push_subscriptions | TBD | Migration ready (20260409_002) |
 
 ---
 
@@ -83,49 +148,57 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | File | Purpose |
 |------|---------|
 | `kg-pastoral-network.html` | The entire application |
-| `sw.js` | Service worker for offline support |
+| `sw.js` | Service worker for offline + push |
 | `manifest.json` | PWA manifest |
 | `vercel.json` | Vercel deployment config |
 | `package.json` | Project metadata |
 | `supabase/migrations/20260408_001_create_tables.sql` | Database schema + RLS |
+| `supabase/migrations/20260409_002_push_subscriptions.sql` | Push subscriptions table |
 | `supabase/functions/kgfcm-ai-proxy/index.ts` | Claude Haiku AI proxy |
+| `supabase/functions/kgfcm-push-send/index.ts` | Send push notifications |
+| `supabase/functions/kgfcm-push-notify/index.ts` | Push notification handler |
+| `supabase/functions/kgfcm-checkin-remind/index.ts` | Automated check-in reminders |
 | `CLAUDE.md` | Claude Code governance rules |
 | `PROJECT_STATE.md` | This file |
+| `GUIDE-bishop-admin.md` | Bishop & admin user guide |
 | `governance-boundaries.md` | Architecture boundary documentation |
-| `claude-code-frequent-mistakes.md` | AI coding anti-patterns |
 
 ---
 
 ## Deployment Steps (Quick Start)
 
 ```bash
-# 1. Run the migration (paste into Supabase SQL editor)
+# 1. Run the migrations (paste into Supabase SQL editor)
 #    File: supabase/migrations/20260408_001_create_tables.sql
+#    File: supabase/migrations/20260409_002_push_subscriptions.sql
 
 # 2. Set secrets in Supabase dashboard → Settings → Edge Functions
 #    ANTHROPIC_API_KEY = your-claude-api-key
+#    VAPID_PUBLIC_KEY = your-vapid-public-key
+#    VAPID_PRIVATE_KEY = your-vapid-private-key
 
-# 3. Deploy edge function
+# 3. Deploy edge functions
 npx supabase login
 npx supabase link --project-ref kseocbwhuveieqhayske
 npx supabase functions deploy kgfcm-ai-proxy --no-verify-jwt
+npx supabase functions deploy kgfcm-push-send --no-verify-jwt
+npx supabase functions deploy kgfcm-push-notify --no-verify-jwt
+npx supabase functions deploy kgfcm-checkin-remind --no-verify-jwt
 
 # 4. Connect to Vercel
 #    Push to GitHub → Import in Vercel → Auto-deploys on push to main
 
 # 5. Test
 #    - Open deployed URL
-#    - Login as bishop (PIN: 000000)
+#    - Login as bishop
 #    - Create an invite, register as a pastor
 #    - Submit a check-in, post a prayer, test DMs
+#    - Test push notifications
 ```
 
 ---
 
 ## Known Limitations (MVP acceptable)
 
-- PIN hashing uses btoa (base64), not bcrypt — acceptable for MVP, upgrade later
 - Avatar images stored as base64 in database — works under 4MB, move to CDN later
-- Bishop credentials hardcoded in HTML — move to database after launch
-- No push notifications yet — pastors must open the app
 - No data export/backup UI — use Supabase dashboard directly
