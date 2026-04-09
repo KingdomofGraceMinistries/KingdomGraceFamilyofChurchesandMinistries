@@ -13,7 +13,7 @@
 
 - [x] **Bishop Profile Page** — Dedicated page for Bishop Peter Sasser with photo, bio, and couple photo. Accessible from dashboard (Bishop tab) and pastor home screen (Leadership section).
 
-- [x] **Apostle Ericka Sasser Page** — Dedicated page for Apostle Ericka Sasser with photo and bio. Same style as Bishop's page. Accessible from dashboard (Apostle Ericka tab) and pastor home screen.
+- [x] **Apostle Eraka Sasser Page** — Dedicated page for Apostle Eraka Sasser with photo and bio. Same style as Bishop's page. Accessible from dashboard (Apostle Eraka tab) and pastor home screen.
 
 - [x] **Blast Message Branding** — Changed to **"From the Desk of the Bishop"** across:
   - Home screen blast display
@@ -23,8 +23,8 @@
 ### Notes
 
 - Bishop: Peter Sasser
-- Wife: Apostle Ericka Sasser
-- Will need: photos of Bishop, Apostle Ericka, and a photo of them together
+- Wife: Apostle Eraka Sasser
+- Will need: photos of Bishop, Apostle Eraka, and a photo of them together
 - Bio text for both — ask user to provide or draft from available info
 
 ---
@@ -118,9 +118,9 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | Run migration SQL in Supabase SQL editor | HIGH | DONE |
 | Deploy `kgfcm-ai-proxy` edge function to Supabase | HIGH | DONE |
 | Deploy push notification edge functions | HIGH | DONE (push-send, push-notify, checkin-remind) |
-| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | Verify in Supabase dashboard |
-| Connect repo to Vercel for auto-deploy | HIGH | Pending |
-| Schedule weekly post count reset cron job | LOW | Pending |
+| Set `ANTHROPIC_API_KEY` in Supabase secrets | HIGH | DONE |
+| Connect repo to Vercel for auto-deploy | HIGH | DONE |
+| Schedule weekly post count reset cron job | LOW | DONE (pg_cron, every Monday 00:00 UTC) |
 | Add custom domain in Vercel | LOW | Pending |
 
 ---

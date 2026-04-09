@@ -1307,7 +1307,7 @@ function renderBishopDashboard(){
       <button class="b-tab" onclick="switchBishopPanel('invites')">Invites</button>
       ${isBishop()?'<button class="b-tab" onclick="switchBishopPanel(\'manage-admins\')">Admins</button>':''}
       <button class="b-tab" onclick="switchBishopPanel('bishop-profile')">Bishop</button>
-      <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">Apostle Ericka</button>
+      <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">Apostle Eraka</button>
       <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
       <button class="b-tab" onclick="bishopViewApp()" style="background:var(--gold);color:var(--ink);font-weight:600">🏠 View App</button>
       <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
@@ -1362,7 +1362,7 @@ function switchBishopPanel(panel,skipPush){
   else if(panel==='invites') loadBishopInvites();
   else if(panel==='manage-admins') loadManageAdmins();
   else if(panel==='bishop-profile') loadBishopProfile();
-  else if(panel==='apostle-ericka') loadApostleEricka();
+  else if(panel==='apostle-ericka') loadApostleEraka();
   else if(panel==='help') loadHelp();
 }
 
@@ -1681,28 +1681,28 @@ function loadBishopProfile(){
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'padding:40px;text-align:center;color:var(--ash);font-size:13px\\'>Photo coming soon</div>'">
         </div>
         <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser and Apostle Ericka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
+          Bishop Peter Sasser and Apostle Eraka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
         </div>
       </div>
     </div>`;
 }
 
-function loadApostleEricka(){
+function loadApostleEraka(){
   const panel=$('bp-apostle-ericka'); if(!panel) return;
   panel.innerHTML=`
     <div style="max-width:600px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:160px;height:160px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img id="apostle-ericka-photo" src="${esc(C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Ericka Photo"
+          <img id="apostle-ericka-photo" src="${esc(C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Eraka Photo"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\\'>🕊️</div>'">
         </div>
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">Apostle Ericka Sasser</h2>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">Apostle Eraka Sasser</h2>
         <div style="font-size:14px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About Apostle Ericka</div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About Apostle Eraka</div>
         <div id="apostle-ericka-bio" style="font-size:13px;color:var(--frost);line-height:1.8">
-          Apostle Ericka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Ericka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
+          Apostle Eraka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Eraka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
         </div>
       </div>
     </div>`;
@@ -2173,7 +2173,7 @@ function renderPastor(){
           </div>
           <div class="card" onclick="go('s-apostle-ericka')" style="cursor:pointer;text-align:center;padding:16px 8px">
             <div style="font-size:28px;margin-bottom:6px">🕊️</div>
-            <div style="font-size:13px;font-weight:500;color:var(--frost)">Apostle Ericka Sasser</div>
+            <div style="font-size:13px;font-weight:500;color:var(--frost)">Apostle Eraka Sasser</div>
             <div style="font-size:11px;color:var(--mist)">First Lady</div>
           </div>
         </div>
@@ -2220,7 +2220,7 @@ function renderPastor(){
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'padding:30px;text-align:center;color:var(--ash);font-size:13px\'>Photo coming soon</div>'">
         </div>
         <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser and Apostle Ericka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
+          Bishop Peter Sasser and Apostle Eraka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
         </div>
       </div>
     </div>
@@ -2237,23 +2237,23 @@ function renderPastor(){
 <!-- APOSTLE ERICKA (pastor-facing) -->
 <div id="s-apostle-ericka" class="screen">
   <div class="tnav">
-    <div class="tnav-logo"><div class="tnav-mark">🕊️</div><div><div class="tnav-title">Apostle Ericka Sasser</div><div class="tnav-sub">First Lady</div></div></div>
+    <div class="tnav-logo"><div class="tnav-mark">🕊️</div><div><div class="tnav-title">Apostle Eraka Sasser</div><div class="tnav-sub">First Lady</div></div></div>
     <button class="tnav-btn" onclick="go('s-home')">← Home</button>
   </div>
   <div class="scroll">
     <div style="padding:16px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img src="${C.logoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Ericka Photo"
+          <img src="${C.logoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Apostle Eraka Photo"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\'>🕊️</div>'">
         </div>
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">Apostle Ericka Sasser</h2>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">Apostle Eraka Sasser</h2>
         <div style="font-size:13px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About Apostle Ericka</div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About Apostle Eraka</div>
         <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Apostle Ericka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Ericka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
+          Apostle Eraka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Eraka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
         </div>
       </div>
     </div>
