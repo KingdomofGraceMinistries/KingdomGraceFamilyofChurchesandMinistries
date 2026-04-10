@@ -19,11 +19,17 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+/* ── ROOT PALETTE (offline fallback) ──
+   These are the offline-fallback values used before loadConfig() runs OR if Supabase is
+   unreachable. The real palettes are stored in rf_network_config.themes (JSON) and applied
+   at runtime by applyTheme(), which calls setProperty() on document.documentElement. This
+   means a tenant can ship any color scheme without touching this file. */
 :root{
   --ink:#0a0a0f;--ink2:#12121a;--ink3:#1c1c28;--ink4:#252535;
   --gold:#c8a84c;--gold2:#e8c86a;--gold3:rgba(201,168,76,0.14);--gold4:rgba(201,168,76,0.07);
   --frost:#f8f6f0;--mist:#a8a090;--ash:#6a6458;
   --flame:#e85d3a;--sage:#4a8c6a;--sky:#3a6ea8;
+  --thrive:#4ade80;--info2:#60a5fa;
   --br:rgba(201,168,76,0.18);--brh:rgba(201,168,76,0.38);
   --r:16px;--rm:12px;--rs:8px;
 }
@@ -64,7 +70,7 @@ html,body{height:100%;background:var(--ink);color:var(--frost);font-family:'DM S
 .b-stat-num{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:700;color:var(--frost);line-height:1;}
 .b-stat-num.red{color:var(--flame);}
 .b-stat-num.amber{color:var(--gold);}
-.b-stat-num.green{color:#4ade80;}
+.b-stat-num.green{color:var(--thrive);}
 .b-stat-lbl{font-size:11px;color:var(--ash);margin-top:4px;letter-spacing:0.3px;}
 
 /* BISHOP — PASTOR GRID */
@@ -80,7 +86,7 @@ html,body{height:100%;background:var(--ink);color:var(--frost);font-family:'DM S
 .b-pastor-church{font-size:11px;color:var(--mist);}
 .b-burnout-bar{height:4px;border-radius:2px;background:var(--ink4);overflow:hidden;margin-bottom:8px;}
 .b-burnout-fill{height:100%;border-radius:2px;transition:width 0.4s ease;}
-.fill-green{background:#4ade80;}
+.fill-green{background:var(--thrive);}
 .fill-amber{background:var(--gold);}
 .fill-red{background:var(--flame);}
 .b-pastor-meta{display:flex;justify-content:space-between;align-items:center;}
@@ -156,7 +162,7 @@ textarea.fin{resize:vertical;min-height:80px;}
 .pill{display:inline-block;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:600;letter-spacing:0.3px;}
 .pill-gold{background:var(--gold3);color:var(--gold);border:0.5px solid rgba(201,168,76,0.3);}
 .pill-red{background:rgba(232,93,58,0.12);color:var(--flame);border:0.5px solid rgba(232,93,58,0.3);}
-.pill-green{background:rgba(74,140,106,0.15);color:#4ade80;border:0.5px solid rgba(74,140,106,0.3);}
+.pill-green{background:rgba(74,140,106,0.15);color:var(--thrive);border:0.5px solid rgba(74,140,106,0.3);}
 .pill-mist{background:rgba(168,160,144,0.1);color:var(--mist);border:0.5px solid rgba(168,160,144,0.2);}
 .pw-item{background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--rm);padding:14px;margin-bottom:10px;}
 .pw-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
@@ -189,7 +195,7 @@ textarea.fin{resize:vertical;min-height:80px;}
 .pin-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--br);transition:all 0.15s;}
 .pin-dot.filled{background:var(--gold);border-color:var(--gold);}
 .err{background:rgba(232,93,58,0.1);border:0.5px solid rgba(232,93,58,0.3);border-radius:var(--rs);padding:10px 14px;font-size:12px;color:var(--flame);margin-bottom:12px;display:none;}
-.ok-msg{background:rgba(74,140,106,0.1);border:0.5px solid rgba(74,140,106,0.3);border-radius:var(--rs);padding:10px 14px;font-size:12px;color:#4ade80;margin-bottom:12px;display:none;}
+.ok-msg{background:rgba(74,140,106,0.1);border:0.5px solid rgba(74,140,106,0.3);border-radius:var(--rs);padding:10px 14px;font-size:12px;color:var(--thrive);margin-bottom:12px;display:none;}
 .offline-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(232,93,58,0.95);color:#fff;text-align:center;padding:6px 14px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;transform:translateY(-100%);transition:transform 0.3s ease;display:flex;align-items:center;justify-content:center;gap:8px;}
 .offline-bar.show{transform:translateY(0);}
 .offline-bar .sync-btn{background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:var(--rs);padding:3px 10px;font-size:11px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;}
@@ -284,7 +290,7 @@ details[open] summary{border-bottom:0.5px solid var(--br);}
   .b-stat-num{font-size:20px;}
   .b-body{padding:12px;}
 }
-.eve-footer{text-align:center;padding:10px 14px 12px;font-size:10px;color:var(--ash);letter-spacing:0.3px;}
+.eve-footer{text-align:center;padding:8px 14px calc(10px + env(safe-area-inset-bottom));font-size:10px;color:var(--ash);letter-spacing:0.3px;background:var(--ink2);flex-shrink:0;}
 .eve-footer a{color:var(--mist);text-decoration:none;transition:color 0.15s;}
 .eve-footer a:hover{color:var(--gold);}
 .divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--ash);font-size:11px;}
@@ -331,7 +337,6 @@ details[open] summary{border-bottom:0.5px solid var(--br);}
 </div>
 <div id="app"><!-- Pastor PWA screens injected here --></div>
 <div id="bishop-app"><!-- Bishop dashboard injected here --></div>
-<div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>
 
 <script>
 // ============================================================
@@ -356,6 +361,21 @@ const C = {
   aiProxyFn:     '',
   pushNotifyFn:  '',
   vapidPublicKey:'',
+  themes:        null,  // populated from rf_network_config: { default, tip, options:[{id,label,description,palette:{...}}] }
+  footerText:    '',
+  footerUrl:     '',
+  footerBrand:   '',
+  // ── White-label content (people, bios, photos) ──
+  bishopPhotoUrl:   '',
+  bishopBio:        '',
+  apostleName:      '',
+  apostleShort:     '',
+  apostleTitle:     '',
+  apostleRoleLabel: '',
+  apostlePhotoUrl:  '',
+  apostleBio:       '',
+  couplePhotoUrl:   '',
+  coupleBio:        '',
 };
 
 let KG_LOGO = '/icons/kg-logo.jpg';
@@ -377,13 +397,29 @@ async function loadConfig(){
     C.aiProxyFn     = cfg.ai_proxy_fn    || C.aiProxyFn;
     C.pushNotifyFn  = cfg.push_notify_fn || C.pushNotifyFn;
     C.vapidPublicKey= cfg.vapid_public_key||C.vapidPublicKey;
+    C.footerText    = cfg.footer_text    || C.footerText;
+    C.footerUrl     = cfg.footer_url     || C.footerUrl;
+    C.footerBrand   = cfg.footer_brand   || C.footerBrand;
+    C.bishopPhotoUrl= cfg.bishop_photo_url|| C.bishopPhotoUrl;
+    C.bishopBio     = cfg.bishop_bio     || C.bishopBio;
+    C.apostleName   = cfg.apostle_name   || C.apostleName;
+    C.apostleShort  = cfg.apostle_short  || C.apostleShort;
+    C.apostleTitle  = cfg.apostle_title  || C.apostleTitle;
+    C.apostleRoleLabel = cfg.apostle_role_label || C.apostleRoleLabel;
+    C.apostlePhotoUrl  = cfg.apostle_photo_url  || C.apostlePhotoUrl;
+    C.apostleBio    = cfg.apostle_bio    || C.apostleBio;
+    C.couplePhotoUrl= cfg.couple_photo_url|| C.couplePhotoUrl;
+    C.coupleBio     = cfg.couple_bio     || C.coupleBio;
+    if(cfg.themes){ try{ C.themes = JSON.parse(cfg.themes); }catch(e){ C.themes=null; } }
     KG_LOGO = C.logoUrl;
     // Update page title, meta, and manifest
     document.title = C.networkShort + ' — Pastoral Network';
     const metaTitle=document.querySelector('meta[name="apple-mobile-web-app-title"]');
     if(metaTitle) metaTitle.content=C.networkShort;
-    // Dynamic manifest with network branding
-    const manifest={name:C.networkShort+' — Pastoral Network',short_name:C.networkShort,description:'Pastoral care and network oversight for '+C.networkName,start_url:'/',display:'standalone',orientation:'portrait',background_color:'#0a0a0f',theme_color:'#0a0a0f',icons:[{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'any'},{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'maskable'},{src:'/icons/icon-192.svg',sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:'/icons/icon-512.svg',sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
+    // Manifest theme color comes from the default theme's --ink (background)
+    const defaultPalette = C.themes?.options?.find(o=>o.id===C.themes.default)?.palette;
+    const manifestColor = defaultPalette?.ink || '#0a0a0f';
+    const manifest={name:C.networkShort+' — Pastoral Network',short_name:C.networkShort,description:'Pastoral care and network oversight for '+C.networkName,start_url:'/',display:'standalone',orientation:'portrait',background_color:manifestColor,theme_color:manifestColor,icons:[{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'any'},{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'maskable'},{src:'/icons/icon-192.svg',sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:'/icons/icon-512.svg',sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
     const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
     const manifestLink=document.querySelector('link[rel="manifest"]');
     if(manifestLink) manifestLink.href=URL.createObjectURL(blob);
@@ -441,6 +477,63 @@ const weekNum  = () => { const d=new Date(),j=new Date(d.getFullYear(),0,1); ret
 const monthStr = () => new Date().toLocaleString('default',{month:'long',year:'numeric'});
 const saveLocal = (k,v) => localStorage.setItem(C.appId+'_'+k,JSON.stringify(v));
 const loadLocal = k => { try{return JSON.parse(localStorage.getItem(C.appId+'_'+k));}catch{return null;} };
+
+// ── THEME (data-driven from rf_network_config.themes) ──
+// Per-device preference key. Stored value is a theme id like "dark", "cream", "navy" — whatever
+// the tenant has configured in their themes JSON. Login screens always show the default theme.
+const THEME_KEY = 'kgfcm_theme';
+const AUTH_SCREENS = ['s-login','s-pin','s-forgot-pin','s-register'];
+function getThemeId(){
+  return localStorage.getItem(THEME_KEY) || C.themes?.default || 'dark';
+}
+function findTheme(id){
+  return C.themes?.options?.find(o=>o.id===id) || null;
+}
+function injectPalette(palette){
+  if(!palette) return;
+  const root = document.documentElement;
+  Object.keys(palette).forEach(k => root.style.setProperty('--'+k, palette[k]));
+}
+function clearPaletteOverrides(){
+  // Drop any inline CSS variable overrides so :root fallback values take effect again
+  const root = document.documentElement;
+  ['ink','ink2','ink3','ink4','gold','gold2','gold3','gold4','frost','mist','ash','flame','sage','sky','thrive','info2','br','brh']
+    .forEach(k => root.style.removeProperty('--'+k));
+}
+function setTheme(id){
+  const t = findTheme(id);
+  if(!t) return;
+  localStorage.setItem(THEME_KEY, id);
+  applyTheme();
+  // Update picker selection if visible
+  document.querySelectorAll('.theme-opt').forEach(el=>{
+    el.style.borderColor = el.dataset.theme===id ? 'var(--gold)' : 'var(--br)';
+  });
+}
+function footerHTML(){
+  // Returns the configured footer markup, or an empty string if no footer is configured.
+  // Brand link is optional — if footer_url is empty, brand text renders as plain text.
+  if(!C.footerText && !C.footerBrand) return '';
+  const text = esc(C.footerText||'');
+  const brand = esc(C.footerBrand||'');
+  const url = C.footerUrl ? esc(C.footerUrl) : '';
+  const brandHTML = brand
+    ? (url ? `<a href="${url}" target="_blank" rel="noopener">${brand}</a>` : brand)
+    : '';
+  return `<div class="eve-footer">${text}${text&&brand?' ':''}${brandHTML}</div>`;
+}
+function applyTheme(){
+  if(!C.themes) return; // config hasn't loaded yet — :root fallback is still in effect
+  const bishopActive = document.getElementById('bishop-app')?.classList.contains('active');
+  const active = document.querySelector('#app .screen.active');
+  const onAuthScreen = !bishopActive && active && AUTH_SCREENS.includes(active.id);
+  // Auth screens always show the tenant default theme (login is the brand entry point)
+  const targetId = onAuthScreen ? C.themes.default : getThemeId();
+  const target = findTheme(targetId) || findTheme(C.themes.default);
+  if(!target) return;
+  clearPaletteOverrides();
+  injectPalette(target.palette);
+}
 const avHTML = (url,name,size=36) => url
   ? `<img src="${esc(url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)">`
   : `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--ink3);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:${Math.round(size*0.38)}px;font-weight:700;color:var(--gold)">${initials(name)}</div>`;
@@ -658,6 +751,7 @@ function go(id,skipPush){
   if(!skipPush) history.pushState({screen:id},'',' ');
   document.querySelectorAll('#app .screen').forEach(s=>s.classList.remove('active'));
   const s=$(id); if(s){ s.classList.add('active'); onScreen(id); }
+  applyTheme();
 }
 function goBack(){
   if(NAV.history.length){
@@ -690,6 +784,41 @@ function onScreen(id){
   else if(id==='s-checkin') loadCheckin();
   else if(id==='s-dm') loadDM();
   else if(id==='s-ann') loadAnnouncements();
+  else if(id==='s-settings') renderThemeOptions();
+}
+
+// Build the theme picker from C.themes — fully data-driven, no hardcoded options
+function renderThemeOptions(){
+  const picker = document.getElementById('theme-picker');
+  const tipEl  = document.getElementById('theme-tip');
+  if(!picker) return;
+  if(!C.themes?.options?.length){
+    picker.innerHTML = '<div class="empty">No themes configured.</div>';
+    if(tipEl) tipEl.style.display='none';
+    return;
+  }
+  const current = getThemeId();
+  picker.innerHTML = C.themes.options.map(opt => {
+    const p = opt.palette || {};
+    const isActive = opt.id===current;
+    return `<div class="theme-opt" data-theme="${esc(opt.id)}" onclick="setTheme('${esc(opt.id)}')" style="cursor:pointer;border:1.5px solid ${isActive?'var(--gold)':'var(--br)'};border-radius:var(--rm);overflow:hidden;transition:border-color 0.15s">
+      <div style="background:${esc(p.ink||'#000')};padding:18px 12px;text-align:center">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,${esc(p.gold||'#888')},${esc(p.gold2||p.gold||'#aaa')});margin:0 auto 8px"></div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:14px;color:${esc(p.frost||'#fff')};font-weight:600">Aa</div>
+        <div style="font-size:9px;color:${esc(p.mist||'#888')};margin-top:2px">SAMPLE</div>
+      </div>
+      <div style="padding:10px 12px;background:var(--ink2);text-align:center">
+        <div style="font-size:13px;font-weight:500;color:var(--frost)">${esc(opt.label||opt.id)}</div>
+        <div style="font-size:10px;color:var(--mist);margin-top:2px">${esc(opt.description||'')}</div>
+      </div>
+    </div>`;
+  }).join('');
+  // Switch to single column if there are 3+ options or container is narrow
+  picker.style.gridTemplateColumns = C.themes.options.length>2 ? '1fr' : '1fr 1fr';
+  if(tipEl){
+    if(C.themes.tip){ tipEl.innerHTML = `<strong style="color:var(--gold)">Tip:</strong> ${esc(C.themes.tip)}`; tipEl.style.display=''; }
+    else tipEl.style.display='none';
+  }
 }
 function logout(){
   audit('LOGOUT',{});
@@ -744,7 +873,7 @@ async function loadTeam(){
   </div>`;
   const mcEl=$('team-mc');
   if(mcEl&&mc) mcEl.innerHTML=`<div class="challenge-card">
-    <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#60a5fa;margin-bottom:5px">🎯 ${monthStr()}</div>
+    <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--info2);margin-bottom:5px">🎯 ${monthStr()}</div>
     <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost);margin-bottom:4px">${esc(mc.title)}</div>
     <div style="font-size:13px;color:var(--mist);margin-bottom:6px">${esc(mc.goal)}</div>
     <em style="font-size:11px;color:var(--ash)">"${esc(mc.scripture)}" — ${esc(mc.ref)}</em>
@@ -1266,6 +1395,7 @@ function launchBishopDashboard(){
   ba.className='active';
   renderBishopDashboard();
   switchBishopPanel('overview');
+  applyTheme();
 }
 
 function bishopViewApp(){
@@ -1280,6 +1410,7 @@ function bishopBackToDashboard(){
   document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='none');
   $('app').style.display='none';
   $('bishop-app').className='active';
+  applyTheme();
 }
 function isBishop(){ return ST.session?.role==='bishop'; }
 function isAdmin(){ return ST.session?.role==='admin'; }
@@ -1307,7 +1438,7 @@ function renderBishopDashboard(){
       <button class="b-tab" onclick="switchBishopPanel('invites')">Invites</button>
       ${isBishop()?'<button class="b-tab" onclick="switchBishopPanel(\'manage-admins\')">Admins</button>':''}
       <button class="b-tab" onclick="switchBishopPanel('bishop-profile')">Bishop</button>
-      <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">Apostle Eraka</button>
+      <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">${esc(C.apostleShort||'Apostle')}</button>
       <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
       <button class="b-tab" onclick="bishopViewApp()" style="background:var(--gold);color:var(--ink);font-weight:600">🏠 View App</button>
       <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
@@ -1334,7 +1465,7 @@ function renderBishopDashboard(){
     <div id="bp-apostle-ericka" class="b-panel"></div>
     <div id="bp-help" class="b-panel"></div>
   </div>
-  <div class="eve-footer">Powered by <a href="https://www.envisionvirtualedge.com" target="_blank" rel="noopener">Envision VirtualEdge Group LLC</a></div>`;
+  ${footerHTML()}`;
 }
 
 function switchBishopPanel(panel,skipPush){
@@ -1452,7 +1583,7 @@ async function loadBishopEngagement(){
           <div class="b-chart-title">Team posts activity — last 8 weeks</div>
           <div class="b-bars">
             ${engagement.map(w=>`<div class="b-bar-wrap">
-              <div class="b-bar" style="height:${Math.max(4,Math.round((w.posts/maxVal)*72))}px;background:#4ade80;opacity:0.7"></div>
+              <div class="b-bar" style="height:${Math.max(4,Math.round((w.posts/maxVal)*72))}px;background:var(--thrive);opacity:0.7"></div>
               <div class="b-bar-lbl">${w.label}</div>
             </div>`).join('')}
           </div>
@@ -1662,7 +1793,7 @@ function loadBishopProfile(){
     <div style="max-width:600px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:160px;height:160px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img id="bishop-profile-photo" src="${esc(C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="Bishop Photo"
+          <img id="bishop-profile-photo" src="${esc(C.bishopPhotoUrl||C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.bishopName)}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\\'>👑</div>'">
         </div>
         <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">${esc(C.bishopName)}</h2>
@@ -1670,19 +1801,15 @@ function loadBishopProfile(){
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
         <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About the Bishop</div>
-        <div id="bishop-bio-text" style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser is the Presiding Bishop and founder of Kingdom Grace Family of Churches and Ministries, established in 2015. With a heart for pastoral care and kingdom building, Bishop Sasser leads with a vision to strengthen, equip, and unify pastors across the network. His ministry is rooted in grace, accountability, and the empowerment of local church leaders.
-        </div>
+        <div id="bishop-bio-text" style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.bishopBio)}</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold);margin-top:16px">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">The Bishop & First Lady</div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">The Bishop & ${esc(C.apostleRoleLabel||'Spouse')}</div>
         <div style="width:100%;border-radius:8px;overflow:hidden;background:var(--ink3);margin-bottom:12px">
-          <img id="bishop-couple-photo" src="/icons/bishop-and-eraka.jpg" style="width:100%;object-fit:cover;max-height:300px" alt="Bishop & First Lady"
+          <img id="bishop-couple-photo" src="${esc(C.couplePhotoUrl)}" style="width:100%;object-fit:cover;max-height:300px" alt="Bishop & ${esc(C.apostleRoleLabel||'Spouse')}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'padding:40px;text-align:center;color:var(--ash);font-size:13px\\'>Photo coming soon</div>'">
         </div>
-        <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser and Apostle Eraka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
-        </div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.coupleBio)}</div>
       </div>
     </div>`;
 }
@@ -1693,17 +1820,15 @@ function loadApostleEraka(){
     <div style="max-width:600px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:160px;height:160px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img id="apostle-eraka-photo" src="/icons/bishop-and-eraka.jpg" style="width:100%;height:100%;object-fit:cover" alt="Apostle Eraka Sasser"
+          <img id="apostle-eraka-photo" src="${esc(C.apostlePhotoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.apostleName)}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\\'>🕊️</div>'">
         </div>
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">Apostle Eraka Sasser</h2>
-        <div style="font-size:14px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:28px;color:var(--gold);margin-bottom:4px">${esc(C.apostleName)}</h2>
+        <div style="font-size:14px;color:var(--mist);letter-spacing:1px">${esc(C.apostleTitle)}</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About Apostle Eraka</div>
-        <div id="apostle-ericka-bio" style="font-size:13px;color:var(--frost);line-height:1.8">
-          Apostle Eraka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Eraka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
-        </div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:16px;letter-spacing:1px">About ${esc(C.apostleShort)}</div>
+        <div id="apostle-ericka-bio" style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.apostleBio)}</div>
       </div>
     </div>`;
 }
@@ -1812,7 +1937,7 @@ async function bishopDrillPastor(pastorId){
             <div style="background:var(--ink3);border-radius:var(--rs);padding:12px;margin-bottom:12px">
               <div style="font-size:11px;color:var(--ash);margin-bottom:4px">Wellbeing score</div>
               <div style="height:6px;background:var(--ink4);border-radius:3px;overflow:hidden">
-                <div style="height:100%;width:${score}%;background:${level==='green'?'#4ade80':level==='amber'?'var(--gold)':'var(--flame)'};border-radius:3px"></div>
+                <div style="height:100%;width:${score}%;background:${level==='green'?'var(--thrive)':level==='amber'?'var(--gold)':'var(--flame)'};border-radius:3px"></div>
               </div>
               <div style="font-size:11px;color:var(--ash);margin-top:6px">Last check-in: ${p.last_checkin_at?timeAgo(p.last_checkin_at):'Never'} · Pulse: ${['','😔','😕','😐','🙂','🔥'][p.last_pulse_score||3]}</div>
             </div>
@@ -1899,7 +2024,7 @@ function loadHelp(){
       ${helpSection('6','Understanding the Overview','What the pastor cards mean',`
         <p>Each pastor shows a <strong>wellbeing score</strong> based on their check-in activity:</p>
         <ul>
-          <li><span style="color:#4ade80;font-weight:600">Green (Thriving)</span> — checking in regularly, engaged</li>
+          <li><span style="color:var(--thrive);font-weight:600">Green (Thriving)</span> — checking in regularly, engaged</li>
           <li><span style="color:var(--gold);font-weight:600">Amber (Watch)</span> — some decrease in engagement</li>
           <li><span style="color:var(--flame);font-weight:600">Red (At Risk)</span> — may be struggling, consider reaching out</li>
         </ul>
@@ -2168,13 +2293,13 @@ function renderPastor(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="card" onclick="go('s-bishop-profile')" style="cursor:pointer;text-align:center;padding:16px 8px">
             <div style="font-size:28px;margin-bottom:6px">👑</div>
-            <div style="font-size:13px;font-weight:500;color:var(--frost)" id="home-bishop-name">Bishop Peter Sasser</div>
+            <div style="font-size:13px;font-weight:500;color:var(--frost)" id="home-bishop-name">${esc(C.bishopName)}</div>
             <div style="font-size:11px;color:var(--mist)">Presiding Bishop</div>
           </div>
           <div class="card" onclick="go('s-apostle-ericka')" style="cursor:pointer;text-align:center;padding:16px 8px">
             <div style="font-size:28px;margin-bottom:6px">🕊️</div>
-            <div style="font-size:13px;font-weight:500;color:var(--frost)">Apostle Eraka Sasser</div>
-            <div style="font-size:11px;color:var(--mist)">First Lady</div>
+            <div style="font-size:13px;font-weight:500;color:var(--frost)">${esc(C.apostleName)}</div>
+            <div style="font-size:11px;color:var(--mist)">${esc(C.apostleRoleLabel||'')}</div>
           </div>
         </div>
       </div>
@@ -2201,7 +2326,7 @@ function renderPastor(){
     <div style="padding:16px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img src="${C.logoUrl}" style="width:100%;height:100%;object-fit:cover" alt="Bishop Photo"
+          <img src="${esc(C.bishopPhotoUrl||C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.bishopName)}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\'>👑</div>'">
         </div>
         <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">${C.bishopName}</h2>
@@ -2209,19 +2334,15 @@ function renderPastor(){
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
         <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About the Bishop</div>
-        <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser is the Presiding Bishop and founder of Kingdom Grace Family of Churches and Ministries, established in 2015. With a heart for pastoral care and kingdom building, Bishop Sasser leads with a vision to strengthen, equip, and unify pastors across the network. His ministry is rooted in grace, accountability, and the empowerment of local church leaders.
-        </div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.bishopBio)}</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold);margin-top:12px">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">The Bishop & First Lady</div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">The Bishop & ${esc(C.apostleRoleLabel||'Spouse')}</div>
         <div style="width:100%;border-radius:8px;overflow:hidden;background:var(--ink3);margin-bottom:12px">
-          <img src="/icons/bishop-and-eraka.jpg" style="width:100%;object-fit:cover;max-height:260px" alt="Bishop & First Lady"
+          <img src="${esc(C.couplePhotoUrl)}" style="width:100%;object-fit:cover;max-height:260px" alt="Bishop & ${esc(C.apostleRoleLabel||'Spouse')}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'padding:30px;text-align:center;color:var(--ash);font-size:13px\'>Photo coming soon</div>'">
         </div>
-        <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Bishop Peter Sasser and Apostle Eraka Sasser serve together in ministry, leading Kingdom Grace with a shared commitment to faith, family, and the strengthening of the body of Christ.
-        </div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.coupleBio)}</div>
       </div>
     </div>
   </div>
@@ -2234,27 +2355,25 @@ function renderPastor(){
   </div>
 </div>
 
-<!-- APOSTLE ERICKA (pastor-facing) -->
+<!-- APOSTLE / SPOUSE PROFILE (pastor-facing) -->
 <div id="s-apostle-ericka" class="screen">
   <div class="tnav">
-    <div class="tnav-logo"><div class="tnav-mark">🕊️</div><div><div class="tnav-title">Apostle Eraka Sasser</div><div class="tnav-sub">First Lady</div></div></div>
+    <div class="tnav-logo"><div class="tnav-mark">🕊️</div><div><div class="tnav-title">${esc(C.apostleName)}</div><div class="tnav-sub">${esc(C.apostleRoleLabel||'')}</div></div></div>
     <button class="tnav-btn" onclick="go('s-home')">← Home</button>
   </div>
   <div class="scroll">
     <div style="padding:16px">
       <div style="text-align:center;margin-bottom:24px">
         <div style="width:140px;height:140px;border-radius:50%;border:3px solid var(--gold);margin:0 auto 16px;overflow:hidden;background:var(--ink3)">
-          <img src="/icons/bishop-and-eraka.jpg" style="width:100%;height:100%;object-fit:cover" alt="Apostle Eraka Sasser"
+          <img src="${esc(C.apostlePhotoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.apostleName)}"
                onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:48px;color:var(--gold)\'>🕊️</div>'">
         </div>
-        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">Apostle Eraka Sasser</h2>
-        <div style="font-size:13px;color:var(--mist);letter-spacing:1px">First Lady · Kingdom Grace</div>
+        <h2 style="font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--gold);margin-bottom:4px">${esc(C.apostleName)}</h2>
+        <div style="font-size:13px;color:var(--mist);letter-spacing:1px">${esc(C.apostleTitle)}</div>
       </div>
       <div class="card" style="border-left:2px solid var(--gold)">
-        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About Apostle Eraka</div>
-        <div style="font-size:13px;color:var(--frost);line-height:1.8">
-          Apostle Eraka Sasser serves alongside Bishop Peter Sasser as the First Lady of Kingdom Grace Family of Churches and Ministries. Her ministry is marked by a deep passion for prayer, women's empowerment, and spiritual development. Apostle Eraka brings warmth, wisdom, and prophetic insight to the network, encouraging pastors and their families in their walk of faith.
-        </div>
+        <div class="flbl" style="margin-bottom:8px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">About ${esc(C.apostleShort||'')}</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.8;white-space:pre-line">${esc(C.apostleBio)}</div>
       </div>
     </div>
   </div>
@@ -2366,7 +2485,33 @@ function renderPastor(){
       <div class="chips">${['Prophecy','Teaching','Evangelism','Pastoral Care','Administration','Healing','Intercession','Apostolic','Helps','Exhortation','Giving','Leadership'].map(g=>`<div class="chip gift-chip" data-gift="${g}" onclick="this.classList.toggle('on')">${g}</div>`).join('')}</div>
       <div class="err" id="prof-err"></div><div class="ok-msg" id="prof-ok"></div>
       <button class="fsub" id="prof-save-btn" onclick="saveProfile()">Save profile →</button>
+      <button class="tnav-btn" style="width:100%;margin-top:14px;padding:14px;font-size:13px" onclick="go('s-settings')">⚙️ Display Settings</button>
       <div style="height:24px"></div>
+    </div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn on" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="s-settings" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">⚙️</div><div><div class="tnav-title">Display Settings</div><div class="tnav-sub">Choose what's easy on your eyes</div></div></div>
+    <button class="tnav-btn" onclick="go('s-profile')">← Back</button>
+  </div>
+  <div class="scroll">
+    <div style="padding-top:18px">
+      <div class="card">
+        <div class="card-title" style="font-size:15px">Theme</div>
+        <div class="card-sub" style="margin-bottom:14px">Pick the look that's comfortable for you. You can change this anytime.</div>
+        <div id="theme-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><!-- options injected by renderThemeOptions() --></div>
+        <div id="theme-tip" style="margin-top:14px;padding:12px;background:var(--gold4);border:0.5px solid var(--br);border-radius:var(--rs);font-size:11px;color:var(--mist);line-height:1.6;display:none"></div>
+      </div>
     </div>
   </div>
   <div class="bnav">
@@ -2451,7 +2596,8 @@ function renderPastor(){
       <button id="dm-send-btn" class="fsub" style="width:auto;padding:10px 18px;flex-shrink:0" onclick="sendDM()">Send</button>
     </div>
   </div>
-</div>`;
+</div>
+${footerHTML()}`;
 }
 
 // ============================================================
@@ -2840,6 +2986,7 @@ async function boot(){
   history.replaceState({screen:'root'},'',' ');
   await loadConfig();
   renderPastor();
+  applyTheme();
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;
