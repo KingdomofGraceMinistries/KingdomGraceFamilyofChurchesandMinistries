@@ -733,7 +733,7 @@ async function submitPin(){
         ST.session={userId:'bishop',role:'bishop',name:C.bishopName,token:C.supabaseKey};
         saveLocal('session',ST.session);
         audit('LOGIN_SUCCESS',{method:'pin',role:'bishop'});
-        launchBishopDashboard(); initNotifPolling();
+        launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
       } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'bishop'}); }
     } catch(e){ showErr('pin-err','Could not verify. Check your connection.'); }
     return;
@@ -746,7 +746,7 @@ async function submitPin(){
         ST.session={userId:a.id,role:'admin',name:a.full_name,permissions:a.permissions||[],token:C.supabaseKey};
         saveLocal('session',ST.session);
         audit('LOGIN_SUCCESS',{method:'pin',role:'admin',targetId:a.id});
-        launchBishopDashboard(); initNotifPolling();
+        launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
       } else { showErr('pin-err','Incorrect admin PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'admin'}); }
     } catch(e){ showErr('pin-err','Could not verify. Check connection.'); }
     return;
@@ -1617,12 +1617,14 @@ function launchBishopDashboard(){
   applyTheme();
 }
 
-function bishopViewApp(){
+function bishopViewApp(fromDashboard){
   $('bishop-app').className='';
   $('app').style.display='';
   document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='');
-  NAV.history.push({type:'dashboard'});
-  history.pushState({screen:'s-home'},'','');
+  if(fromDashboard){
+    NAV.history.push({type:'dashboard'});
+    history.pushState({screen:'s-home'},'','');
+  }
   go('s-home',true);
 }
 function bishopBackToDashboard(){
@@ -1643,7 +1645,7 @@ function renderBishopDashboard(){
   $('bishop-app').innerHTML=`
   <div class="b-topbar">
     <div class="b-logo">
-      <img id="b-logo-img" src="" style="width:38px;height:38px;object-fit:contain;border-radius:4px" alt="KG">
+      <img id="b-logo-img" src="${KG_LOGO}" style="width:38px;height:38px;object-fit:contain;border-radius:4px" alt="KG">
       <div><div class="b-network">${C.networkName}</div><div class="b-role">${esc(roleLabel)} · ${esc(roleName)}</div></div>
     </div>
     <div class="b-nav">
@@ -1659,7 +1661,7 @@ function renderBishopDashboard(){
       <button class="b-tab" onclick="switchBishopPanel('bishop-profile')">Bishop</button>
       <button class="b-tab" onclick="switchBishopPanel('apostle-ericka')">${esc(C.apostleShort||'Apostle')}</button>
       <button class="b-tab" onclick="switchBishopPanel('help')">Help</button>
-      <button class="b-tab" onclick="bishopViewApp()" style="background:var(--gold);color:var(--ink);font-weight:600">🏠 View App</button>
+      <button class="b-tab" onclick="bishopViewApp(true)" style="background:var(--gold);color:var(--ink);font-weight:600">🏠 View App</button>
       <div class="notif-bell" onclick="openNotifDrawer()" style="font-size:20px;padding:6px 8px">🔔<div class="notif-badge" id="notif-badge-bishop"></div></div>
       <button class="b-signout" onclick="logout()">Sign out</button>
     </div>
@@ -2462,7 +2464,7 @@ function renderPastor(){
 <div id="s-register" class="screen">
   <div class="scroll" style="padding-top:0">
     <div class="auth-shell" style="flex:none;padding-bottom:4px">
-      <img src="" class="auth-logo-kg" style="width:80px;height:80px;object-fit:contain;margin:0 auto 16px;display:block" alt="Network">
+      <img src="${KG_LOGO}" class="auth-logo-kg" style="width:80px;height:80px;object-fit:contain;margin:0 auto 16px;display:block" alt="Network">
       <div class="auth-title">Welcome to ${C.networkShort}</div>
       <div class="auth-sub">Bishop ${C.bishopName.split(' ').pop()} invited you to join.<br>Set up your account in seconds.</div>
     </div>
@@ -2485,13 +2487,13 @@ function renderPastor(){
 <div id="s-home" class="screen">
   <div class="tnav">
     <div class="tnav-logo">
-      <img src="" id="tnav-kg-logo" style="width:30px;height:30px;object-fit:contain;border-radius:4px" alt="KG">
+      <img src="${KG_LOGO}" id="tnav-kg-logo" style="width:30px;height:30px;object-fit:contain;border-radius:4px" alt="KG">
       <div><div class="tnav-title">${C.networkName}</div><div class="tnav-sub">Pastoral Network</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <div class="notif-bell" onclick="openNotifDrawer()">🔔<div class="notif-badge" id="notif-badge-home"></div></div>
       <button class="tnav-btn" onclick="go('s-checkin')">Check In</button>
-      <button class="tnav-btn bishop-only" onclick="bishopBackToDashboard()" style="display:none;background:var(--gold);color:var(--ink)">← Dashboard</button>
+      <button class="tnav-btn bishop-only" onclick="bishopBackToDashboard()" style="display:none;background:var(--gold);color:var(--ink)">View Dashboard</button>
     </div>
   </div>
   <div class="scroll">
@@ -3237,7 +3239,7 @@ async function boot(){
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;
-    launchBishopDashboard(); initNotifPolling(); return;
+    launchBishopDashboard(); bishopViewApp(false); initNotifPolling(); return;
   }
   if(saved?.userId){
     ST.session=saved;
@@ -3251,8 +3253,6 @@ async function boot(){
 }
 
 boot();
-// Set logo images after boot
-document.querySelectorAll('#b-logo-img, #tnav-kg-logo, .auth-logo-kg').forEach(img=>img.src=KG_LOGO);
 
 // ── SERVICE WORKER + OFFLINE SUPPORT ──
 const offlineBar=document.getElementById('kg-offline-bar');
