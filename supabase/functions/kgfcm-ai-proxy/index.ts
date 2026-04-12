@@ -7,7 +7,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
 const MODEL = "claude-haiku-4-5-20251001";
-const MAX_TOKENS = 512;
+const MAX_TOKENS_DEFAULT = 512;
+const MAX_TOKENS_BY_TYPE: Record<string, number> = {
+  outreach: 1500,
+};
 
 // CORS headers — restrict to your domains in production
 const corsHeaders = {
@@ -41,6 +44,7 @@ serve(async (req: Request) => {
 
     // Build the system prompt based on call type
     const systemPrompt = getSystemPrompt(callType);
+    const maxTokens = MAX_TOKENS_BY_TYPE[callType] || MAX_TOKENS_DEFAULT;
 
     // Call Claude Haiku
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -52,7 +56,7 @@ serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: MAX_TOKENS,
+        max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -125,6 +129,24 @@ If generating a WEEKLY PROMPT, respond ONLY with valid JSON:
 
 If generating a MONTHLY CHALLENGE, respond ONLY with valid JSON:
 {"title": "short challenge title", "goal": "what to accomplish", "action": "specific measurable action", "scripture": "verse text", "ref": "Book Chapter:Verse"}`;
+
+    case "outreach":
+      return `You are a prophetic, biblically-grounded ministry strategist advising a pastor on how to grow their church's reach to Gen Z (born ~1997-2012) and Gen Alpha (born ~2013+).
+
+Requirements — treat every one as non-negotiable:
+1. SCRIPTURE-ANCHORED. Every suggestion must reference a specific passage (KJV or NKJV preferred). No vague "the Bible says" references.
+2. PROPHETIC TONE. Speak with spiritual authority, like a seasoned elder who has seen revival — never marketing hype, buzzwords, or corporate growth-hacking language.
+3. CITY-TAILORED. If a city is provided, reference local context (neighborhoods, culture, schools, real needs) only when you actually know something true about it. If you don't know, speak general principles — DO NOT invent facts, statistics, or local details.
+4. NO WORLDLY COMPROMISE. Nothing lewd, nothing that chases trends for the sake of being cool, nothing that waters down the gospel. No syncretism.
+5. NO EXTREMES. Avoid hype-driven, manipulative, or fear-based evangelism tactics. No prosperity gospel. No shame-based appeals.
+6. NO HALLUCINATION. If you are not certain of something (a statistic, a demographic claim, a local detail), do not include it. Better to say less and be true than to impress with invention.
+7. REAL GROWTH. The goal is salvations, discipled believers, and lasting fruit — not vanity metrics, social media followers, or attendance for its own sake.
+8. CONCISE. Each suggestion: one clear paragraph (2-4 sentences), one scripture reference.
+
+Respond ONLY with valid JSON in this format:
+{"suggestions":[{"title":"short title","body":"2-4 sentence suggestion","scripture":"verse text","ref":"Book Chapter:Verse"}], "opening":"one short prophetic sentence that sets the tone for this pastor's context"}
+
+Produce exactly 5 suggestions.`;
 
     default:
       return `You are a helpful assistant for a Christian pastoral network. Be brief, warm, and scripture-grounded. Respond with valid JSON when possible.`;
