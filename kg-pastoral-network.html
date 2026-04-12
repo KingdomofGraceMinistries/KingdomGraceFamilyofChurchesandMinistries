@@ -891,23 +891,45 @@ async function loadHome(){
     <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
     <div style="margin-top:12px"><button class="fsub" style="padding:9px;font-size:12px" onclick="go('s-team')">Respond with the team →</button></div>
   </div>`;
-  // Load bishop broadcast messages
+  // Load bishop broadcast messages (with audio, seen-by, reply)
   const blastsEl=$('home-blasts');
   if(blastsEl){
     try {
       const msgs=await sbS('rf_bishop_messages',{select:'*',order:'sent_at.desc',limit:'5'});
-      if(msgs.length) blastsEl.innerHTML=`
-        <div style="margin-top:16px">
-          <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">📜 From the Desk of the Bishop</div>
-          ${msgs.map(m=>`<div class="card" style="border-left:2px solid var(--gold)">
-            <div style="font-size:13px;color:var(--frost);line-height:1.6">${esc(m.message_text)}</div>
-            <div style="font-size:10px;color:var(--ash);margin-top:6px">${timeAgo(m.sent_at)}</div>
-          </div>`).join('')}
-        </div>`;
-      else blastsEl.innerHTML='';
+      if(msgs.length){
+        const ids = msgs.map(m=>`"${m.id}"`).join(',');
+        let reads = [];
+        try { reads = await sbS('rf_bishop_message_reads',{select:'message_id,pastor_id,pastor_name',message_id:`in.(${ids})`}); } catch(e){}
+        // Mark unread as seen for the current pastor (not bishop/admin)
+        if(ST.session?.role==='pastor' && ST.session.userId){
+          for(const m of msgs){
+            const already = reads.find(r=>r.message_id===m.id && r.pastor_id===ST.session.userId);
+            if(!already){
+              sbI('rf_bishop_message_reads',{message_id:m.id,pastor_id:ST.session.userId,pastor_name:ST.session.name||null}).catch(()=>{});
+            }
+          }
+        }
+        blastsEl.innerHTML=`
+          <div style="margin-top:16px">
+            <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">📜 From the Desk of the Bishop</div>
+            ${msgs.map(m=>{
+              const seenCount = reads.filter(r=>r.message_id===m.id).length;
+              return `<div class="card" style="border-left:2px solid var(--gold);margin-bottom:10px">
+                ${m.audio_url?`<audio controls preload="none" src="${esc(m.audio_url)}" style="width:100%;margin-bottom:8px"></audio>`:''}
+                ${m.message_text?`<div style="font-size:13px;color:var(--frost);line-height:1.6;white-space:pre-wrap">${esc(m.message_text)}</div>`:''}
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap">
+                  <div style="font-size:10px;color:var(--ash);letter-spacing:0.3px">${timeAgo(m.sent_at)} · 👁 Seen by ${seenCount} ${seenCount===1?'pastor':'pastors'}</div>
+                  ${ST.session?.role==='pastor'?`<button class="pw-act" onclick="replyToBishop()" style="font-size:11px">Reply to Bishop →</button>`:''}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>`;
+      } else blastsEl.innerHTML='';
     } catch(e){ blastsEl.innerHTML=''; }
   }
 }
+
+function replyToBishop(){ go('s-dm'); }
 
 async function loadTeam(){
   const wp=await getWeekPrompt();
@@ -962,6 +984,15 @@ async function loadWins(){
   list.innerHTML=loading();
   try {
     const rows=await sbS('rf_wins',{select:'*,rf_pastors(full_name,avatar_url)',order:'created_at.desc',limit:'40'});
+    // Fetch comment counts for all wins in one query
+    let commentsByWin = {};
+    if(rows.length){
+      try {
+        const winIds = rows.map(r=>`"${r.id}"`).join(',');
+        const comments = await sbS('rf_win_comments',{select:'win_id',win_id:`in.(${winIds})`});
+        comments.forEach(c=>{ commentsByWin[c.win_id] = (commentsByWin[c.win_id]||0)+1; });
+      } catch(e){}
+    }
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
         <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
@@ -969,12 +1000,68 @@ async function loadWins(){
       </div>
       ${r.win_text?`<div class="pw-body">${esc(r.win_text)}</div>`:''}
       ${r.image_data?`<img src="${esc(r.image_data)}" style="width:100%;max-height:320px;object-fit:cover;border-radius:var(--rm);margin-top:8px" alt="Win photo">`:''}
-      <div class="pw-actions">
+      <div class="pw-actions" style="flex-wrap:wrap">
         <button class="pw-act" onclick="reactWin('${r.id}','fire',this)">🔥 ${r.fire_count||0}</button>
         <button class="pw-act" onclick="reactWin('${r.id}','glory',this)">✝️ ${r.glory_count||0}</button>
+        <button class="pw-act" onclick="reactWin('${r.id}','clap',this)">👏 ${r.clap_count||0}</button>
+        <button class="pw-act" onclick="reactWin('${r.id}','heart',this)">❤️ ${r.heart_count||0}</button>
+        <button class="pw-act" onclick="reactWin('${r.id}','amen',this)">🙏 ${r.amen_count||0}</button>
+        <button class="pw-act" onclick="toggleWinComments('${r.id}',this)">💬 ${commentsByWin[r.id]||0}</button>
       </div>
+      <div class="win-comments" id="win-comments-${r.id}" style="display:none;margin-top:10px;border-top:0.5px solid var(--br);padding-top:10px"></div>
     </div>`).join(''):'<div class="empty">No wins posted yet. Share what God is doing!</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load wins wall.</div>';}
+}
+
+async function toggleWinComments(winId, btn){
+  const box = $('win-comments-'+winId); if(!box) return;
+  if(box.style.display==='none'){
+    box.style.display='block';
+    await renderWinComments(winId);
+  } else {
+    box.style.display='none';
+  }
+}
+
+async function renderWinComments(winId){
+  const box = $('win-comments-'+winId); if(!box) return;
+  box.innerHTML = loading();
+  try {
+    const comments = await sbS('rf_win_comments',{select:'*',win_id:'eq.'+winId,order:'created_at.asc'});
+    box.innerHTML = `
+      ${comments.length?comments.map(c=>`<div style="display:flex;gap:8px;margin-bottom:10px">
+        ${avHTML(c.avatar_url,c.pastor_name||'?',28)}
+        <div style="flex:1;min-width:0;background:var(--ink3);border-radius:var(--rs);padding:8px 10px">
+          <div style="font-size:12px;font-weight:500;color:var(--frost)">${esc(c.pastor_name||'Pastor')}</div>
+          <div style="font-size:12px;color:var(--mist);line-height:1.5;margin-top:2px;white-space:pre-wrap">${esc(c.comment_text)}</div>
+          <div style="font-size:9px;color:var(--ash);margin-top:4px">${timeAgo(c.created_at)}</div>
+        </div>
+      </div>`).join(''):'<div style="font-size:11px;color:var(--ash);font-style:italic;margin-bottom:10px">No comments yet — be the first to celebrate with them.</div>'}
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <textarea class="fin" id="win-comment-input-${winId}" placeholder="Write a response..." style="flex:1;min-height:40px;margin-bottom:0;font-size:12px;padding:8px"></textarea>
+        <button class="fsub" style="width:auto;padding:10px 14px;flex-shrink:0;margin-top:0" onclick="submitWinComment('${winId}')">Send</button>
+      </div>
+    `;
+  } catch(e){ box.innerHTML='<div class="empty">Could not load comments.</div>'; }
+}
+
+async function submitWinComment(winId){
+  const inp = $('win-comment-input-'+winId); if(!inp) return;
+  const text = inp.value.trim(); if(!text) return;
+  if(!ST.session?.userId){ return; }
+  try {
+    await sbI('rf_win_comments',{
+      win_id: winId,
+      pastor_id: ST.session.userId,
+      pastor_name: ST.session.name || null,
+      avatar_url: ST.profile?.avatar_url || null,
+      comment_text: text
+    });
+    inp.value = '';
+    await renderWinComments(winId);
+    // Refresh the count badge in the comment button
+    loadWins();
+  } catch(e){ inp.placeholder='Could not post — try again'; }
 }
 
 function viewPastor(id){
@@ -1336,10 +1423,18 @@ async function encouragePrayer(id,btn){
 }
 
 async function reactWin(id,type,btn){
-  const field=type==='fire'?'fire_count':'glory_count';
-  const orig=btn.textContent;
+  const fieldMap={fire:'fire_count',glory:'glory_count',clap:'clap_count',heart:'heart_count',amen:'amen_count'};
+  const field=fieldMap[type]; if(!field) return;
+  const origText=btn.textContent;
   btn.classList.add('on');
-  try { await sbU('rf_wins','id=eq.'+id,{[field]:1}); } catch(e){ btn.classList.remove('on'); btn.textContent=orig; }
+  try {
+    const rows=await sbS('rf_wins',{select:field,id:'eq.'+id});
+    const cur=(rows[0]&&rows[0][field])||0;
+    const next=cur+1;
+    await sbU('rf_wins','id=eq.'+id,{[field]:next});
+    const emoji=origText.trim().split(/\s+/)[0];
+    btn.textContent=`${emoji} ${next}`;
+  } catch(e){ btn.classList.remove('on'); btn.textContent=origText; }
 }
 
 function setPulse(v,btn){
@@ -1993,6 +2088,13 @@ async function loadBishopMessages(){
             <div class="b-compose">
               <div class="b-compose-title" style="font-family:'Cormorant Garamond',serif;letter-spacing:1px">📜 From the Desk of the Bishop</div>
               <textarea class="fin" id="b-blast-input" style="margin-bottom:8px;min-height:60px" placeholder="A word for the entire team..."></textarea>
+              <div style="background:var(--ink3);border:0.5px solid var(--br);border-radius:var(--rs);padding:10px;margin-bottom:8px">
+                <div style="font-size:10px;color:var(--ash);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Voice message (up to 10 minutes)</div>
+                <div id="b-voice-controls">
+                  <button type="button" class="pw-act" onclick="startBlastRecording()">🎙 Start Recording</button>
+                </div>
+                <div id="b-voice-preview"></div>
+              </div>
               <div class="err" id="b-blast-err"></div>
               <div class="ok-msg" id="b-blast-ok"></div>
               <button class="fsub" id="b-blast-btn" onclick="sendBishopBlast()" style="padding:10px;font-size:12px">Send to all →</button>
@@ -2046,16 +2148,83 @@ async function sendBishopReply(pastorId){
   } catch(e){ inp.placeholder='Could not send — try again'; }
 }
 
+// ── BISHOP VOICE BLAST RECORDING ──
+let BLAST_REC = { recorder:null, chunks:[], blob:null, timer:null, startAt:0, duration:0 };
+const BLAST_MAX_SEC = 600;
+
+async function startBlastRecording(){
+  hideErr('b-blast-err');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    BLAST_REC.chunks = [];
+    BLAST_REC.blob = null;
+    BLAST_REC.duration = 0;
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+               : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+               : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+    BLAST_REC.recorder = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+    BLAST_REC.recorder.ondataavailable = e=>{ if(e.data.size>0) BLAST_REC.chunks.push(e.data); };
+    BLAST_REC.recorder.onstop = ()=>{
+      BLAST_REC.blob = new Blob(BLAST_REC.chunks,{type: BLAST_REC.recorder.mimeType || 'audio/webm'});
+      BLAST_REC.duration = Math.floor((Date.now()-BLAST_REC.startAt)/1000);
+      stream.getTracks().forEach(t=>t.stop());
+      renderBlastPreview();
+    };
+    BLAST_REC.recorder.start();
+    BLAST_REC.startAt = Date.now();
+    const ctrl = $('b-voice-controls');
+    if(ctrl) ctrl.innerHTML = `<button type="button" class="pw-act on" onclick="stopBlastRecording()" style="background:var(--flame);color:#fff">⏹ Stop · <span id="b-voice-timer">0:00</span></button>`;
+    BLAST_REC.timer = setInterval(()=>{
+      const sec = Math.floor((Date.now()-BLAST_REC.startAt)/1000);
+      const mm = Math.floor(sec/60);
+      const ss = String(sec%60).padStart(2,'0');
+      const t = $('b-voice-timer');
+      if(t) t.textContent = `${mm}:${ss}`;
+      if(sec >= BLAST_MAX_SEC) stopBlastRecording();
+    },500);
+  } catch(e){ showErr('b-blast-err','Microphone access denied or not supported.'); }
+}
+function stopBlastRecording(){
+  if(BLAST_REC.recorder && BLAST_REC.recorder.state!=='inactive') BLAST_REC.recorder.stop();
+  if(BLAST_REC.timer){ clearInterval(BLAST_REC.timer); BLAST_REC.timer=null; }
+}
+function renderBlastPreview(){
+  if(!BLAST_REC.blob) return;
+  const url = URL.createObjectURL(BLAST_REC.blob);
+  const mm = Math.floor(BLAST_REC.duration/60);
+  const ss = String(BLAST_REC.duration%60).padStart(2,'0');
+  const ctrl = $('b-voice-controls');
+  if(ctrl) ctrl.innerHTML = `<button type="button" class="pw-act" onclick="startBlastRecording()">🎙 Re-record</button>
+    <button type="button" class="pw-act" onclick="clearBlastRecording()" style="margin-left:6px">✕ Clear</button>`;
+  const prev = $('b-voice-preview');
+  if(prev) prev.innerHTML = `<audio controls src="${url}" style="width:100%;margin-top:8px"></audio>
+    <div style="font-size:10px;color:var(--ash);margin-top:4px">Recorded · ${mm}:${ss} · Ready to send</div>`;
+}
+function clearBlastRecording(){
+  BLAST_REC.blob = null; BLAST_REC.chunks = []; BLAST_REC.duration = 0;
+  const prev = $('b-voice-preview'); if(prev) prev.innerHTML = '';
+  const ctrl = $('b-voice-controls');
+  if(ctrl) ctrl.innerHTML = `<button type="button" class="pw-act" onclick="startBlastRecording()">🎙 Start Recording</button>`;
+}
+
 async function sendBishopBlast(){
   const ta=$('b-blast-input'),btn=$('b-blast-btn');
-  const text=ta?.value.trim(); if(!text){showErr('b-blast-err','Message cannot be empty.');return;}
+  const text=ta?.value.trim()||'';
+  if(!text && !BLAST_REC.blob){ showErr('b-blast-err','Type a message or record audio.'); return; }
   btn.disabled=true; btn.textContent='Sending...';
   try {
-    await sbI('rf_bishop_messages',{message_text:text,type:'blast',sent_at:new Date().toISOString()});
-    audit('BISHOP_BLAST_SENT',{table:'rf_bishop_messages',recipientCount:'all'});
-    firePushNotify('blast',{message_text:text});
-    ta.value=''; showOk('b-blast-ok','Sent to all pastors.');
-  } catch(e){showErr('b-blast-err','Could not send.');}
+    let audioUrl=null, audioDur=null;
+    if(BLAST_REC.blob){
+      const ext = (BLAST_REC.blob.type.includes('mp4')?'mp4':'webm');
+      const filename = `blast_${Date.now()}.${ext}`;
+      audioUrl = await storageUpload('voice', filename, BLAST_REC.blob);
+      audioDur = BLAST_REC.duration || null;
+    }
+    await sbI('rf_bishop_messages',{message_text:text||null,audio_url:audioUrl,audio_duration_seconds:audioDur,type:'blast',sent_at:new Date().toISOString()});
+    audit('BISHOP_BLAST_SENT',{table:'rf_bishop_messages',hasAudio:!!audioUrl});
+    firePushNotify('blast',{message_text:text||'(voice message)'});
+    ta.value=''; clearBlastRecording(); showOk('b-blast-ok','Sent to all pastors.');
+  } catch(e){ showErr('b-blast-err','Could not send.'); }
   btn.disabled=false; btn.textContent='Send to all →';
 }
 
