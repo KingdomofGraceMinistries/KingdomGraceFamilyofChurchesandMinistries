@@ -1,13 +1,29 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-04-09
-**Status:** Pre-launch — finishing deployment checklist
+**Last updated:** 2026-04-12
+**Status:** Pre-launch — handing over to Bishop Sasser TODAY
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
 
 ---
 
-## Next Session (2026-04-10)
+## Current Session (2026-04-12) — SHIP-DAY PUNCH LIST
+
+### In progress
+
+- [ ] **Fix couples section photo cropping** — `object-fit: cover + max-height` chops heads. Switch to `contain` with taller max.
+- [ ] **Apostle page photo** — swap circle avatar for rectangular hero showing the full couple photo (Bishop Sasser and Eraka.jpg). Update Supabase `apostle_photo_url`.
+- [ ] **App-screen visual outline** — give pastor screens the bounded/framed look the bishop panel has.
+- [ ] **Warmer light (beige) theme** — current cream is too bright; soften to warmer tone (SQL update to rf_network_config.themes).
+- [ ] **Win Wall photo upload** — add `image_data` column to rf_wins, mirror announcements upload pattern.
+- [ ] **Giving button (Coming Soon)** — 4th tile on pastor home.
+- [ ] **Apostles' Council button (Coming Soon)** — new leadership card on pastor home.
+- [ ] **Outreach Suggester** — dedicated screen (s-outreach) with first-time city/zip + demographics setup, AI-generated growth suggestions for Gen Z/Alpha, strict biblical + prophetic guardrails, no hallucination.
+- [ ] **Supabase photo uploads** — upload Bishop Sasser.jpg, Bishop Sasser and Eraka.jpg, Bishop and Apostle.jpg to Supabase Storage; update rf_network_config URLs.
+
+---
+
+## Session 3 (2026-04-10) — DONE
 
 ### Priority Tasks
 
