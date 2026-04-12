@@ -399,6 +399,10 @@ const C = {
 
 let KG_LOGO = '/icons/kg-logo.jpg';
 
+// Bishop mitre — purple body with gold orphrey band and gold cross at apex.
+// Inline SVG so it scales with font-size and does not depend on any font/emoji set.
+const MITRE = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em" aria-label="Mitre"><path d="M12 3Q6 7 6 14L6 20L18 20L18 14Q18 7 12 3Z" fill="#6a2c8a" stroke="#c8a84c" stroke-width="0.8"/><rect x="6" y="13" width="12" height="1.6" fill="#c8a84c"/><rect x="11.3" y="0.6" width="1.4" height="3" fill="#c8a84c"/><rect x="10.1" y="1.4" width="3.8" height="1" fill="#c8a84c"/></svg>';
+
 // Fetch all config from Supabase — called once at boot
 async function loadConfig(){
   try {
@@ -783,7 +787,7 @@ function backFabClick(){
   }
 }
 function go(id,skipPush){
-  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach'];
+  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach','s-pastor-view'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
   const prev=document.querySelector('#app .screen.active');
   if(prev&&prev.id===id) return;
@@ -826,6 +830,7 @@ function onScreen(id){
   else if(id==='s-dm') loadDM();
   else if(id==='s-ann') loadAnnouncements();
   else if(id==='s-outreach') loadOutreach();
+  else if(id==='s-pastor-view') loadPastorView(ST.viewPastorId);
   else if(id==='s-settings') renderThemeOptions();
 }
 
@@ -926,7 +931,7 @@ async function loadTeam(){
   try {
     const rows=await sbS('rf_team_responses',{select:'*,rf_pastors(full_name,avatar_url)',week_number:'eq.'+weekNum(),order:'created_at.asc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
-      <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
+      <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
         <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         ${r.is_pinned?'<span class="pill pill-gold" style="margin-left:auto">📌</span>':''}
       </div><div class="pw-body">${esc(r.response_text)}</div>
@@ -940,7 +945,7 @@ async function loadPrayer(){
   try {
     const rows=await sbS('rf_prayer_requests',{select:'*,rf_pastors(full_name,avatar_url)',status:'eq.active',order:'created_at.desc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
-      <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
+      <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
         <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         <span class="pill pill-mist" style="margin-left:auto">🙏 ${r.prayed_count||0}</span>
       </div><div class="pw-body">${esc(r.request_text)}</div>
@@ -958,7 +963,7 @@ async function loadWins(){
   try {
     const rows=await sbS('rf_wins',{select:'*,rf_pastors(full_name,avatar_url)',order:'created_at.desc',limit:'40'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
-      <div class="pw-header">${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
+      <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
         <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
         <span style="margin-left:auto;font-size:20px">🏆</span>
       </div>
@@ -970,6 +975,48 @@ async function loadWins(){
       </div>
     </div>`).join(''):'<div class="empty">No wins posted yet. Share what God is doing!</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load wins wall.</div>';}
+}
+
+function viewPastor(id){
+  if(!id||id==='bishop') return;
+  ST.viewPastorId=id;
+  go('s-pastor-view');
+}
+async function loadPastorView(id){
+  const body=$('pastor-view-body'); if(!body) return;
+  if(!id){ body.innerHTML='<div class="empty">No pastor selected.</div>'; return; }
+  body.innerHTML=loading();
+  try {
+    const rows=await sbS('rf_pastors',{select:'*',id:'eq.'+id});
+    if(!rows.length){ body.innerHTML='<div class="empty">Pastor not found.</div>'; return; }
+    const p=rows[0];
+    const gifts=Array.isArray(p.spiritual_gifts)?p.spiritual_gifts:[];
+    const avatar=p.avatar_url
+      ? `<img src="${esc(p.avatar_url)}" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);margin:0 auto 12px;display:block">`
+      : `<div style="width:120px;height:120px;border-radius:50%;background:var(--ink3);border:3px solid var(--gold);display:flex;align-items:center;justify-content:center;font-size:42px;color:var(--gold);font-family:'Cormorant Garamond',serif;margin:0 auto 12px">${esc((p.full_name||'?').trim()[0]||'?')}</div>`;
+    body.innerHTML=`
+      <div style="text-align:center;margin-bottom:20px">
+        ${avatar}
+        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:700;color:var(--frost);line-height:1.2">${esc(p.full_name||'Pastor')}</div>
+        ${p.church_name?`<div style="font-size:13px;color:var(--gold);margin-top:6px;font-weight:500">${esc(p.church_name)}</div>`:''}
+        ${p.city?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${esc(p.city)}</div>`:''}
+        ${p.years_in_ministry?`<div style="font-size:10px;color:var(--ash);margin-top:6px;text-transform:uppercase;letter-spacing:1.2px">${p.years_in_ministry} ${p.years_in_ministry==1?'year':'years'} in ministry</div>`:''}
+      </div>
+      ${p.bio?`<div class="pw-item" style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">About</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.65;white-space:pre-wrap">${esc(p.bio)}</div>
+      </div>`:''}
+      ${gifts.length?`<div class="pw-item" style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Spiritual gifts</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${gifts.map(g=>`<span style="background:var(--gold3);border:0.5px solid var(--br);color:var(--gold);padding:5px 12px;border-radius:999px;font-size:11px">${esc(g)}</span>`).join('')}</div>
+      </div>`:''}
+      ${p.believing_for?`<div class="pw-item" style="margin-bottom:12px">
+        <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Believing for</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.65;white-space:pre-wrap">${esc(p.believing_for)}</div>
+      </div>`:''}
+      ${!p.bio&&!gifts.length&&!p.believing_for?'<div class="empty">This pastor hasn\\'t filled out their profile yet.</div>':''}
+    `;
+  } catch(e){ body.innerHTML='<div class="empty">Could not load pastor profile.</div>'; }
 }
 
 function loadProfile(){
@@ -1417,7 +1464,10 @@ function showPinLogin(role){
   ST.pinTarget=role; pinBuf='';
   document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
   const mark=$('pin-mark'),title=$('pin-title'),sub=$('pin-sub');
-  if(mark) mark.textContent=role==='bishop'?'👑':role==='admin'?'🔧':'🔢';
+  if(mark){
+    if(role==='bishop') mark.innerHTML=MITRE;
+    else mark.textContent=role==='admin'?'🔧':'🔢';
+  }
   if(title) title.textContent=role==='bishop'?'Bishop Access':role==='admin'?'Admin Access':'Pastor Login';
   if(sub) sub.textContent=role==='bishop'?'Enter your master PIN':role==='admin'?'Enter your admin PIN':'Enter your 6-digit PIN';
   const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display=role==='pastor'?'block':'none';
@@ -1500,7 +1550,7 @@ function annCard(r, role){
   const mine = ST.session && r.pastor_id===ST.session.userId;
   const isAdmin = role==='bishop';
   return `<div class="pw-item" id="ann-card-${r.id}">
-    <div class="pw-header">
+    <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>
       ${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'Pastor',34)}
       <div style="flex:1;min-width:0">
         <div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div>
@@ -2390,7 +2440,7 @@ function renderPastor(){
       <div><div class="bio-label">Sign in with PIN</div><div class="bio-sub">Your 6-digit access code</div></div>
     </div>
     <div class="bio-btn" onclick="showPinLogin('bishop')" style="border-color:var(--brh)">
-      <div class="bio-icon" style="background:var(--gold3)">👑</div>
+      <div class="bio-icon" style="background:var(--gold3)">${MITRE}</div>
       <div><div class="bio-label" style="color:var(--gold)">Bishop Access</div><div class="bio-sub">Network oversight dashboard</div></div>
     </div>
     <div class="bio-btn" onclick="showPinLogin('admin')" style="border-color:rgba(58,110,168,0.3)">
@@ -2517,10 +2567,10 @@ function renderPastor(){
         <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)"><div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div></div>
       </div>
       <div id="home-leadership" style="margin-bottom:16px">
-        <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">👑 Our Leadership</div>
+        <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">${MITRE} Our Leadership</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="card" onclick="go('s-bishop-profile')" style="cursor:pointer;text-align:center;padding:16px 8px">
-            <div style="font-size:28px;margin-bottom:6px">👑</div>
+            <div style="font-size:28px;margin-bottom:6px">${MITRE}</div>
             <div style="font-size:13px;font-weight:500;color:var(--frost)" id="home-bishop-name">${esc(C.bishopName)}</div>
             <div style="font-size:11px;color:var(--mist)">Presiding Bishop</div>
           </div>
@@ -2547,7 +2597,7 @@ function renderPastor(){
 <!-- BISHOP PROFILE (pastor-facing) -->
 <div id="s-bishop-profile" class="screen">
   <div class="tnav">
-    <div class="tnav-logo"><div class="tnav-mark">👑</div><div><div class="tnav-title">${C.bishopName}</div><div class="tnav-sub">Presiding Bishop</div></div></div>
+    <div class="tnav-logo"><div class="tnav-mark" style="background:transparent;font-size:18px">${MITRE}</div><div><div class="tnav-title">${C.bishopName}</div><div class="tnav-sub">Presiding Bishop</div></div></div>
     <button class="tnav-btn" onclick="go('s-home')">← Home</button>
   </div>
   <div class="scroll">
@@ -2622,6 +2672,24 @@ function renderPastor(){
   </div>
   <div class="scroll">
     <div id="outreach-body" style="padding-top:14px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- PASTOR VIEW PROFILE (visible to bishop, admin, and peer pastors) -->
+<div id="s-pastor-view" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">👤</div><div><div class="tnav-title">Pastor Profile</div><div class="tnav-sub">Network member</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div id="pastor-view-body" style="padding-top:14px"></div>
   </div>
   <div class="bnav">
     <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
