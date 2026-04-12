@@ -3980,12 +3980,43 @@ const offlineBar=document.getElementById('kg-offline-bar');
 const onlineToast=document.getElementById('kg-online-toast');
 let swReady=null;
 
+// ── Auto-update: reload the page as soon as a new SW takes control ──
+let reloadingForUpdate = false;
 if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(reloadingForUpdate) return;
+    reloadingForUpdate = true;
+    window.location.reload();
+  });
+
   navigator.serviceWorker.register('/sw.js').then(reg=>{
     swReady=reg;
     // Request background sync when available
     if('sync' in reg) reg.sync.register('kg-sync-mutations').catch(()=>{});
+
+    // Force-check for a new SW on boot
+    reg.update().catch(()=>{});
+
+    // Check for updates every 5 min and whenever the tab becomes visible
+    setInterval(()=>{ reg.update().catch(()=>{}); }, 5*60*1000);
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState==='visible') reg.update().catch(()=>{});
+    });
+
+    // If a new SW is already waiting on boot, activate it
+    if(reg.waiting){ reg.waiting.postMessage('SKIP_WAITING'); }
+    reg.addEventListener('updatefound', ()=>{
+      const nw = reg.installing;
+      if(!nw) return;
+      nw.addEventListener('statechange', ()=>{
+        if(nw.state==='installed' && navigator.serviceWorker.controller){
+          // A new version is ready — tell it to take over immediately
+          nw.postMessage('SKIP_WAITING');
+        }
+      });
+    });
   }).catch(()=>{});
+
   // Listen for messages from service worker
   navigator.serviceWorker.addEventListener('message',e=>{
     if(e.data.type==='QUEUED_OFFLINE'){

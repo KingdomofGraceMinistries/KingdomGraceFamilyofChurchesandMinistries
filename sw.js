@@ -3,10 +3,11 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v9';
+const CACHE_NAME = 'kg-pastoral-v10';
+// Pre-cache only the immutable app shell. The main HTML is served
+// network-first so updates land on every reload without needing a
+// cache-name bump.
 const CACHE_URLS = [
-  '/',
-  '/kg-pastoral-network.html',
   '/manifest.json',
   '/icons/kg-logo.jpg',
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap'
@@ -15,45 +16,72 @@ const CACHE_URLS = [
 // ── INSTALL: Pre-cache the app shell ──
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHE_URLS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHE_URLS).catch(()=>{}))
   );
   self.skipWaiting();
 });
 
 // ── ACTIVATE: Clean old caches ──
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
-// ── FETCH: Network-first for API, cache-first for app shell ──
+// ── FETCH: Network-first for HTML + API, cache-first only for fonts/icons ──
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  const req = e.request;
 
   // Supabase API calls — network-first, cache GET responses for offline reading
   if (url.hostname.includes('supabase.co')) {
-    if (e.request.method === 'GET') {
-      e.respondWith(networkFirstThenCache(e.request));
+    if (req.method === 'GET') {
+      e.respondWith(networkFirstThenCache(req));
     } else {
-      // POST/PATCH/DELETE — try network, queue if offline
-      e.respondWith(networkOrQueue(e.request));
+      e.respondWith(networkOrQueue(req));
     }
     return;
   }
 
   // Google Fonts — cache-first (they rarely change)
   if (url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com')) {
-    e.respondWith(cacheFirstThenNetwork(e.request));
+    e.respondWith(cacheFirstThenNetwork(req));
     return;
   }
 
-  // App shell (HTML, manifest, icons) — cache-first with network update
-  e.respondWith(cacheFirstThenNetwork(e.request));
+  // Icons, manifest — cache-first (immutable-ish)
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json') {
+    e.respondWith(cacheFirstThenNetwork(req));
+    return;
+  }
+
+  // Navigation (HTML) — network-first so updates land on every reload
+  if (req.mode === 'navigate' || req.destination === 'document' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    e.respondWith(networkFirstForShell(req));
+    return;
+  }
+
+  // Everything else — try network, fall back to cache
+  e.respondWith(networkFirstThenCache(req));
 });
+
+// ── STRATEGY: network-first for the main HTML shell ──
+async function networkFirstForShell(request) {
+  try {
+    const response = await fetch(request, { cache: 'no-store' });
+    if (response && response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put('/kg-pastoral-network.html', response.clone()).catch(()=>{});
+    }
+    return response;
+  } catch {
+    const cached = await caches.match('/kg-pastoral-network.html');
+    if (cached) return cached;
+    return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+  }
+}
 
 // ── STRATEGIES ──
 
@@ -204,6 +232,10 @@ async function replayQueue() {
 
 // ── MESSAGE HANDLER: Manual sync trigger from app ──
 self.addEventListener('message', (e) => {
+  if (e.data === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
   if (e.data === 'FORCE_SYNC') {
     replayQueue().then(() => {
       e.source.postMessage({ type: 'FORCE_SYNC_DONE' });
