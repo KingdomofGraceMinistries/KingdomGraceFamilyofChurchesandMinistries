@@ -1160,7 +1160,7 @@ async function loadPastorView(id){
         <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Believing for</div>
         <div style="font-size:13px;color:var(--frost);line-height:1.65;white-space:pre-wrap">${esc(p.believing_for)}</div>
       </div>`:''}
-      ${!p.bio&&!gifts.length&&!p.believing_for?'<div class="empty">This pastor hasn\\'t filled out their profile yet.</div>':''}
+      ${!p.bio&&!gifts.length&&!p.believing_for?'<div class="empty">This pastor hasn&#39;t filled out their profile yet.</div>':''}
     `;
   } catch(e){ body.innerHTML='<div class="empty">Could not load pastor profile.</div>'; }
 }
