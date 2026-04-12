@@ -787,7 +787,7 @@ function backFabClick(){
   }
 }
 function go(id,skipPush){
-  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach','s-pastor-view'];
+  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach','s-pastor-view','s-fasts','s-events'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
   const prev=document.querySelector('#app .screen.active');
   if(prev&&prev.id===id) return;
@@ -831,6 +831,8 @@ function onScreen(id){
   else if(id==='s-ann') loadAnnouncements();
   else if(id==='s-outreach') loadOutreach();
   else if(id==='s-pastor-view') loadPastorView(ST.viewPastorId);
+  else if(id==='s-fasts') loadFasts();
+  else if(id==='s-events') loadEvents();
   else if(id==='s-settings') renderThemeOptions();
 }
 
@@ -927,9 +929,59 @@ async function loadHome(){
       } else blastsEl.innerHTML='';
     } catch(e){ blastsEl.innerHTML=''; }
   }
+  renderHomeActiveFast();
+  renderHomeUpcomingEvents();
 }
 
 function replyToBishop(){ go('s-dm'); }
+
+// ── Home: active fast card ──
+async function renderHomeActiveFast(){
+  const el=$('home-active-fast'); if(!el) return;
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const fasts=await sbS('rf_fasts',{select:'*',start_date:'lte.'+today,end_date:'gte.'+today,order:'start_date.desc',limit:'1'});
+    if(!fasts.length){ el.innerHTML=''; return; }
+    const f=fasts[0];
+    const parts=await sbS('rf_fast_participants',{select:'pastor_id',fast_id:'eq.'+f.id}).catch(()=>[]);
+    const mine=ST.session?.userId && parts.find(p=>p.pastor_id===ST.session.userId);
+    el.innerHTML=`<div style="margin-top:16px">
+      <div class="card" onclick="go('s-fasts')" style="cursor:pointer;border-left:2px solid var(--gold)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:18px">🕯️</span>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;color:var(--frost);flex:1">${esc(f.title||'Active Fast')}</div>
+          <span class="pill pill-gold">LIVE</span>
+        </div>
+        <div style="font-size:11px;color:var(--mist)">${esc(f.start_date)} → ${esc(f.end_date)}${f.fast_type?' · '+esc(f.fast_type):''}</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:6px">🙏 ${parts.length} ${parts.length===1?'pastor':'pastors'} in agreement${mine?' · you are in':''}</div>
+      </div>
+    </div>`;
+  } catch(e){ el.innerHTML=''; }
+}
+
+// ── Home: upcoming events card ──
+async function renderHomeUpcomingEvents(){
+  const el=$('home-upcoming-events'); if(!el) return;
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const events=await sbS('rf_events',{select:'*',event_date:'gte.'+today,order:'event_date.asc',limit:'3'});
+    if(!events.length){ el.innerHTML=''; return; }
+    el.innerHTML=`<div style="margin-top:16px">
+      <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">📅 Coming Up</div>
+      ${events.map(e=>`<div class="card" onclick="go('s-events')" style="cursor:pointer;display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        <div style="background:var(--gold3);border:0.5px solid var(--gold);border-radius:var(--rs);padding:6px 8px;text-align:center;min-width:44px;flex-shrink:0">
+          <div style="font-size:9px;color:var(--gold);text-transform:uppercase">${new Date(e.event_date+'T00:00').toLocaleDateString('en-US',{month:'short'})}</div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--gold);line-height:1">${new Date(e.event_date+'T00:00').getDate()}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--frost)">${esc(e.title||'Event')}</div>
+          ${e.event_time?`<div style="font-size:11px;color:var(--mist)">${esc(e.event_time)}</div>`:''}
+          ${e.location?`<div style="font-size:11px;color:var(--mist);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.is_virtual?'💻':'📍'} ${esc(e.location)}</div>`:''}
+        </div>
+      </div>`).join('')}
+    </div>`;
+  } catch(e){ el.innerHTML=''; }
+}
 
 async function loadTeam(){
   const wp=await getWeekPrompt();
@@ -1089,6 +1141,13 @@ async function loadPastorView(id){
         ${p.city?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${esc(p.city)}</div>`:''}
         ${p.years_in_ministry?`<div style="font-size:10px;color:var(--ash);margin-top:6px;text-transform:uppercase;letter-spacing:1.2px">${p.years_in_ministry} ${p.years_in_ministry==1?'year':'years'} in ministry</div>`:''}
       </div>
+      ${(p.credential_type||p.ordained_by||p.covering_under)?`<div class="pw-item" style="margin-bottom:12px;border-left:2px solid var(--gold)">
+        <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Credentials</div>
+        ${p.credential_type?`<div style="font-size:13px;color:var(--frost);margin-bottom:4px"><strong style="color:var(--gold)">${esc(p.credential_type)}</strong></div>`:''}
+        ${p.ordination_date?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">Ordained ${esc(p.ordination_date)}</div>`:''}
+        ${p.ordained_by?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">By ${esc(p.ordained_by)}</div>`:''}
+        ${p.covering_under?`<div style="font-size:12px;color:var(--mist)">Covering: ${esc(p.covering_under)}</div>`:''}
+      </div>`:''}
       ${p.bio?`<div class="pw-item" style="margin-bottom:12px">
         <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">About</div>
         <div style="font-size:13px;color:var(--frost);line-height:1.65;white-space:pre-wrap">${esc(p.bio)}</div>
@@ -1106,9 +1165,233 @@ async function loadPastorView(id){
   } catch(e){ body.innerHTML='<div class="empty">Could not load pastor profile.</div>'; }
 }
 
+// ============================================================
+// CONSECRATION / FASTING
+// ============================================================
+async function loadFasts(){
+  const body=$('fasts-body'); if(!body) return;
+  body.innerHTML=loading();
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const fasts=await sbS('rf_fasts',{select:'*',order:'start_date.desc'});
+    const fastIds=fasts.map(f=>`"${f.id}"`).join(',');
+    let parts=[];
+    if(fasts.length){
+      try { parts=await sbS('rf_fast_participants',{select:'*',fast_id:`in.(${fastIds})`}); } catch(e){}
+    }
+    const composer = isDashboardUser() ? `
+      <div class="pw-item" style="margin-bottom:14px;border:1px solid var(--brh)">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold);margin-bottom:8px">Declare a Fast</div>
+        <input class="fin" id="fast-title" placeholder="Title — e.g. Esther Fast">
+        <textarea class="fin" id="fast-desc" placeholder="Purpose / call — what are we consecrating for?" style="min-height:60px"></textarea>
+        <div class="frow">
+          <div><label class="flbl">Start date</label><input class="fin" id="fast-start" type="date" value="${today}"></div>
+          <div><label class="flbl">End date</label><input class="fin" id="fast-end" type="date" value="${today}"></div>
+        </div>
+        <div class="frow">
+          <div><label class="flbl">Fast type</label>
+            <select class="fin" id="fast-type">
+              <option value="">(optional)</option>
+              <option value="Daniel fast">Daniel fast</option>
+              <option value="Water only">Water only</option>
+              <option value="Esther fast">Esther fast</option>
+              <option value="Partial / sunrise-to-sundown">Partial / sunrise-to-sundown</option>
+              <option value="Media fast">Media fast</option>
+              <option value="Corporate agreement">Corporate agreement</option>
+            </select>
+          </div>
+          <div><label class="flbl">Scripture (optional)</label><input class="fin" id="fast-scripture" placeholder="e.g. Joel 2:12"></div>
+        </div>
+        <div class="err" id="fast-err"></div>
+        <button class="fsub" id="fast-declare-btn" onclick="declareFast()">Declare fast &rarr;</button>
+      </div>` : '';
+    const nowMs=Date.now();
+    const active=fasts.filter(f=>{
+      const s=new Date(f.start_date).getTime(), e=new Date(f.end_date).getTime()+86400000;
+      return nowMs>=s && nowMs<=e;
+    });
+    const upcoming=fasts.filter(f=>new Date(f.start_date).getTime()>nowMs);
+    const past=fasts.filter(f=>new Date(f.end_date).getTime()+86400000<nowMs);
+    const renderFast=(f,label)=>{
+      const mine=ST.session?.userId && parts.find(p=>p.fast_id===f.id&&p.pastor_id===ST.session.userId);
+      const joined=parts.filter(p=>p.fast_id===f.id);
+      const breakthroughs=joined.filter(p=>p.breakthrough_text&&p.breakthrough_text.trim());
+      return `<div class="pw-item" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-size:20px">🕯️</div>
+          <div style="flex:1">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost)">${esc(f.title||'Fast')}</div>
+            <div style="font-size:11px;color:var(--mist)">${esc(f.start_date)} &rarr; ${esc(f.end_date)}${f.fast_type?' &middot; '+esc(f.fast_type):''}</div>
+          </div>
+          ${label?`<span class="pill pill-gold">${label}</span>`:''}
+        </div>
+        ${f.description?`<div style="font-size:13px;color:var(--mist);line-height:1.6;margin-bottom:8px;white-space:pre-wrap">${esc(f.description)}</div>`:''}
+        ${f.scripture_ref?`<div style="font-size:11px;color:var(--ash);font-style:italic;margin-bottom:8px">${esc(f.scripture_ref)}</div>`:''}
+        <div style="font-size:11px;color:var(--gold);margin-bottom:6px">🙏 ${joined.length} ${joined.length===1?'pastor':'pastors'} in agreement</div>
+        ${ST.session?.role==='pastor' && !mine ? `<button class="pw-act on" onclick="joinFast('${f.id}')">Count me in</button>`:''}
+        ${mine ? `
+          <div style="margin-top:8px;padding:8px;background:var(--ink3);border-radius:var(--rs)">
+            <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">You're in agreement</div>
+            <textarea class="fin" id="bt-${f.id}" style="margin-bottom:6px;min-height:50px;font-size:12px" placeholder="Share a breakthrough or testimony…">${esc(mine.breakthrough_text||'')}</textarea>
+            <button class="pw-act" onclick="saveBreakthrough('${f.id}')">Save testimony</button>
+          </div>
+        ` : ''}
+        ${breakthroughs.length?`<div style="margin-top:10px">
+          <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Breakthroughs</div>
+          ${breakthroughs.map(b=>`<div style="background:var(--ink3);border-left:2px solid var(--gold);padding:8px 10px;border-radius:var(--rs);margin-bottom:6px">
+            <div style="font-size:11px;color:var(--gold);font-weight:500">${esc(b.pastor_name||'Pastor')}</div>
+            <div style="font-size:12px;color:var(--mist);line-height:1.5;margin-top:2px;white-space:pre-wrap">${esc(b.breakthrough_text)}</div>
+          </div>`).join('')}
+        </div>`:''}
+      </div>`;
+    };
+    body.innerHTML=composer
+      +(active.length?`<div class="flbl" style="margin-top:10px">Active now</div>${active.map(f=>renderFast(f,'LIVE')).join('')}`:'')
+      +(upcoming.length?`<div class="flbl" style="margin-top:10px">Upcoming</div>${upcoming.map(f=>renderFast(f,'')).join('')}`:'')
+      +(past.length?`<div class="flbl" style="margin-top:10px">Past</div>${past.slice(0,10).map(f=>renderFast(f,'')).join('')}`:'')
+      +(fasts.length===0?'<div class="empty">No fasts declared yet.</div>':'');
+  } catch(e){ body.innerHTML='<div class="empty">Could not load fasts.</div>'; }
+}
+
+async function declareFast(){
+  const btn=$('fast-declare-btn'); if(btn){ btn.disabled=true; btn.textContent='Declaring...'; }
+  const data={
+    title:$('fast-title')?.value.trim(),
+    description:$('fast-desc')?.value.trim()||null,
+    start_date:$('fast-start')?.value,
+    end_date:$('fast-end')?.value,
+    fast_type:$('fast-type')?.value||null,
+    scripture_ref:$('fast-scripture')?.value.trim()||null,
+    declared_by:ST.session?.name||null
+  };
+  if(!data.title || !data.start_date || !data.end_date){
+    showErr('fast-err','Title and dates are required.');
+    if(btn){ btn.disabled=false; btn.textContent='Declare fast →'; }
+    return;
+  }
+  try {
+    await sbI('rf_fasts',data);
+    audit('FAST_DECLARED',{table:'rf_fasts',title:data.title});
+    firePushNotify('blast',{message_text:'📣 The Bishop has declared a fast: '+data.title}).catch(()=>{});
+    loadFasts();
+  } catch(e){ showErr('fast-err','Could not declare. Try again.'); if(btn){ btn.disabled=false; btn.textContent='Declare fast →'; } }
+}
+
+async function joinFast(id){
+  if(!ST.session?.userId) return;
+  try {
+    await sbI('rf_fast_participants',{fast_id:id,pastor_id:ST.session.userId,pastor_name:ST.session.name||null,avatar_url:ST.profile?.avatar_url||null});
+    audit('FAST_JOINED',{table:'rf_fast_participants',fast_id:id});
+    loadFasts();
+  } catch(e){ /* already joined or network */ loadFasts(); }
+}
+
+async function saveBreakthrough(fastId){
+  const ta=$('bt-'+fastId); if(!ta) return;
+  const text=ta.value.trim(); if(!text) return;
+  try {
+    await sbU('rf_fast_participants',`fast_id=eq.${fastId}&pastor_id=eq.${ST.session.userId}`,{breakthrough_text:text,breakthrough_at:new Date().toISOString()});
+    loadFasts();
+  } catch(e){ ta.placeholder='Could not save — try again'; }
+}
+
+// ============================================================
+// EVENTS / CALENDAR
+// ============================================================
+async function loadEvents(){
+  const body=$('events-body'); if(!body) return;
+  body.innerHTML=loading();
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const events=await sbS('rf_events',{select:'*',order:'event_date.asc'});
+    const composer = isDashboardUser() ? `
+      <div class="pw-item" style="margin-bottom:14px;border:1px solid var(--brh)">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold);margin-bottom:8px">Create an Event</div>
+        <input class="fin" id="evt-title" placeholder="Title — e.g. Regional Gathering">
+        <textarea class="fin" id="evt-desc" placeholder="Description" style="min-height:60px"></textarea>
+        <div class="frow">
+          <div><label class="flbl">Event date</label><input class="fin" id="evt-date" type="date" value="${today}"></div>
+          <div><label class="flbl">End date (optional)</label><input class="fin" id="evt-enddate" type="date"></div>
+        </div>
+        <div class="frow">
+          <div><label class="flbl">Time</label><input class="fin" id="evt-time" placeholder="e.g. 7:00 PM CST"></div>
+          <div><label class="flbl">Type</label>
+            <select class="fin" id="evt-type">
+              <option value="">(optional)</option>
+              <option>Conference</option>
+              <option>Revival</option>
+              <option>Ordination</option>
+              <option>Retreat</option>
+              <option>Fast</option>
+              <option>Prayer Night</option>
+              <option>Council Meeting</option>
+              <option>Training</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <label class="flbl">Location</label><input class="fin" id="evt-location" placeholder="Venue or address">
+        <label class="flbl">Link (optional — zoom, map, etc.)</label><input class="fin" id="evt-url" placeholder="https://…">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mist);margin:6px 0"><input type="checkbox" id="evt-virtual"> This is a virtual / online event</label>
+        <div class="err" id="evt-err"></div>
+        <button class="fsub" id="evt-create-btn" onclick="createEvent()">Post event &rarr;</button>
+      </div>` : '';
+    const upcoming=events.filter(e=>e.event_date>=today);
+    const past=events.filter(e=>e.event_date<today).reverse();
+    const renderEvent=e=>`<div class="pw-item" style="margin-bottom:10px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="background:var(--gold3);border:0.5px solid var(--gold);border-radius:var(--rs);padding:8px 10px;text-align:center;flex-shrink:0;min-width:50px">
+          <div style="font-size:10px;color:var(--gold);text-transform:uppercase">${new Date(e.event_date+'T00:00').toLocaleDateString('en-US',{month:'short'})}</div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--gold);line-height:1">${new Date(e.event_date+'T00:00').getDate()}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost)">${esc(e.title||'Event')}</div>
+          ${e.event_type?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-top:2px">${esc(e.event_type)}</div>`:''}
+          ${e.event_time?`<div style="font-size:12px;color:var(--mist);margin-top:4px">🕒 ${esc(e.event_time)}</div>`:''}
+          ${e.location?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${e.is_virtual?'💻':'📍'} ${esc(e.location)}</div>`:''}
+          ${e.end_date&&e.end_date!==e.event_date?`<div style="font-size:11px;color:var(--ash);margin-top:2px">Through ${esc(e.end_date)}</div>`:''}
+          ${e.description?`<div style="font-size:12px;color:var(--mist);margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(e.description)}</div>`:''}
+          ${e.location_url?`<a href="${esc(e.location_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--gold)">Open link →</a>`:''}
+        </div>
+      </div>
+    </div>`;
+    body.innerHTML=composer
+      +(upcoming.length?`<div class="flbl" style="margin-top:10px">Upcoming</div>${upcoming.map(renderEvent).join('')}`:'')
+      +(past.length?`<div class="flbl" style="margin-top:14px">Past</div>${past.slice(0,10).map(renderEvent).join('')}`:'')
+      +(events.length===0?'<div class="empty">No events posted yet.</div>':'');
+  } catch(e){ body.innerHTML='<div class="empty">Could not load events.</div>'; }
+}
+
+async function createEvent(){
+  const btn=$('evt-create-btn'); if(btn){ btn.disabled=true; btn.textContent='Posting...'; }
+  const data={
+    title:$('evt-title')?.value.trim(),
+    description:$('evt-desc')?.value.trim()||null,
+    event_date:$('evt-date')?.value,
+    end_date:$('evt-enddate')?.value||null,
+    event_time:$('evt-time')?.value.trim()||null,
+    event_type:$('evt-type')?.value||null,
+    location:$('evt-location')?.value.trim()||null,
+    location_url:$('evt-url')?.value.trim()||null,
+    is_virtual:$('evt-virtual')?.checked||false,
+    created_by:ST.session?.name||null
+  };
+  if(!data.title || !data.event_date){
+    showErr('evt-err','Title and date are required.');
+    if(btn){ btn.disabled=false; btn.textContent='Post event →'; }
+    return;
+  }
+  try {
+    await sbI('rf_events',data);
+    audit('EVENT_CREATED',{table:'rf_events',title:data.title});
+    firePushNotify('blast',{message_text:'📅 New event: '+data.title+' on '+data.event_date}).catch(()=>{});
+    loadEvents();
+  } catch(e){ showErr('evt-err','Could not post. Try again.'); if(btn){ btn.disabled=false; btn.textContent='Post event →'; } }
+}
+
 function loadProfile(){
   const p=ST.profile; if(!p) return;
-  const fields={name:'full_name',churchName:'church_name',city:'city',years:'years_in_ministry',bio:'bio',prayerFocus:'prayer_focus',believing:'believing_for'};
+  const fields={name:'full_name',churchName:'church_name',city:'city',years:'years_in_ministry',bio:'bio',prayerFocus:'prayer_focus',believing:'believing_for',credentialType:'credential_type',ordinationDate:'ordination_date',ordainedBy:'ordained_by',covering:'covering_under'};
   Object.entries(fields).forEach(([id,key])=>{const e=$('prof-'+id); if(e)e.value=p[key]||'';});
   const gifts=p.spiritual_gifts||[];
   document.querySelectorAll('.gift-chip').forEach(c=>c.classList.toggle('on',gifts.includes(c.dataset.gift)));
@@ -1387,7 +1670,11 @@ async function saveProfile(){
     bio:$('prof-bio')?.value.trim()||'',
     prayer_focus:$('prof-prayerFocus')?.value.trim()||'',
     believing_for:$('prof-believing')?.value.trim()||'',
-    spiritual_gifts:gifts
+    spiritual_gifts:gifts,
+    credential_type:$('prof-credentialType')?.value||null,
+    ordination_date:$('prof-ordinationDate')?.value||null,
+    ordained_by:$('prof-ordainedBy')?.value.trim()||null,
+    covering_under:$('prof-covering')?.value.trim()||null
   };
   if(ST.avatarData) data.avatar_url=ST.avatarData;
   try {
@@ -2731,10 +3018,16 @@ function renderPastor(){
         <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">✉️</div><div class="stat-lbl">Message Bishop</div></div>
       </div>
       <div class="stats-row" style="margin-top:10px">
-        <div class="stat-box" onclick="go('s-outreach')"><div class="stat-num">🌾</div><div class="stat-lbl">Outreach Insights</div></div>
+        <div class="stat-box" onclick="go('s-events')"><div class="stat-num">📅</div><div class="stat-lbl">Events</div></div>
+        <div class="stat-box" onclick="go('s-fasts')"><div class="stat-num">🕯️</div><div class="stat-lbl">Consecration</div></div>
+        <div class="stat-box" onclick="go('s-outreach')"><div class="stat-num">🌾</div><div class="stat-lbl">Outreach</div></div>
+      </div>
+      <div class="stats-row" style="margin-top:10px">
         <div class="stat-box" onclick="comingSoon('Giving')"><div class="stat-num">💝</div><div class="stat-lbl">Giving</div></div>
         <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)"><div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div></div>
       </div>
+      <div id="home-active-fast"></div>
+      <div id="home-upcoming-events"></div>
       <div id="home-leadership" style="margin-bottom:16px">
         <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">${MITRE} Our Leadership</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -2869,6 +3162,42 @@ function renderPastor(){
   </div>
 </div>
 
+<!-- CONSECRATION / FASTS -->
+<div id="s-fasts" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">🕯️</div><div><div class="tnav-title">Consecration</div><div class="tnav-sub">Corporate fasting & prayer</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div id="fasts-body" style="padding-top:14px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- EVENTS / CALENDAR -->
+<div id="s-events" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">📅</div><div><div class="tnav-title">Network Events</div><div class="tnav-sub">Gatherings & calendar</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div id="events-body" style="padding-top:14px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
 <!-- TEAM -->
 <div id="s-team" class="screen">
   <div class="tnav">
@@ -2964,6 +3293,26 @@ function renderPastor(){
         <div><label class="flbl">City</label><input class="fin" id="prof-city" placeholder="City, State"></div>
       </div>
       <label class="flbl">Years in Ministry</label><input class="fin" id="prof-years" type="number" placeholder="e.g. 12">
+      <div style="margin:14px 0 6px;font-size:10px;color:var(--gold);letter-spacing:1.2px;text-transform:uppercase;font-family:'Cormorant Garamond',serif">Credentials</div>
+      <div class="frow">
+        <div><label class="flbl">Credential</label>
+          <select class="fin" id="prof-credentialType">
+            <option value="">(none)</option>
+            <option>Minister</option>
+            <option>Elder</option>
+            <option>Pastor</option>
+            <option>Evangelist</option>
+            <option>Teacher</option>
+            <option>Prophet</option>
+            <option>Apostle</option>
+            <option>Deacon</option>
+            <option>Lay Leader</option>
+          </select>
+        </div>
+        <div><label class="flbl">Ordination date</label><input class="fin" id="prof-ordinationDate" type="date"></div>
+      </div>
+      <label class="flbl">Ordained by</label><input class="fin" id="prof-ordainedBy" placeholder="e.g. Bishop Peter Sasser">
+      <label class="flbl">Spiritual covering</label><input class="fin" id="prof-covering" placeholder="Who do you serve under?">
       <label class="flbl">Personal Testimony / Bio</label><textarea class="fin" id="prof-bio" placeholder="Share your story..."></textarea>
       <label class="flbl">Current Public Prayer Focus</label><textarea class="fin" id="prof-prayerFocus" placeholder="What are you interceding for?"></textarea>
       <label class="flbl">What I'm Believing God For</label><textarea class="fin" id="prof-believing" placeholder="Your faith declaration..."></textarea>

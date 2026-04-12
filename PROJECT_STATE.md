@@ -7,6 +7,32 @@
 
 ---
 
+## 🕊️ Reformation Feature Tracker
+
+See `REFORMATION_ROADMAP.md` for the full list with scope/rationale.
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 1 | Doctrinal Statement / Core Beliefs page | PHASE 2 | Smallest and most symbolic — do first in phase 2. Bishop drafts text first. |
+| 2 | Teaching Library (sermons, Bible study, position papers) | PHASE 2 | Reuses `voice` bucket; add `rf_teachings` table |
+| 3 | Fasting / Consecration Tracker | DONE (2026-04-12) | `rf_fasts` + `rf_fast_participants`, home card, declare/join/breakthrough |
+| 4 | Ordination / Credentialing Tracker | DONE (2026-04-12) | Added columns on `rf_pastors`; edit in profile; display on pastor view |
+| 5 | Church Directory | LATER | Promote `rf_pastors.church_name` to proper `rf_churches` table |
+| 6 | Events / Calendar | DONE (2026-04-12) | `rf_events` + home card + `s-events` screen with bishop compose |
+| 7 | Testimony Wall (long-form testimonies) | PHASE 2 | Separate from Wins — storytelling, reuse voice bucket |
+| 8 | Apostles' Council Voting | PHASE 2 | Already a Coming Soon button on home |
+
+**Phase 2 build order** (after Bishop Sasser uses v1 for 1–2 weeks and gives real feedback):
+1. Doctrinal Statement
+2. Teaching Library
+3. Church Directory
+4. Testimony Wall
+5. Apostles' Council Voting
+
+---
+
+---
+
 ## 🚨 RESUME HERE (next Claude Code session) 🚨
 
 All HTML/JS/SQL changes are **written and pushed**. Latest commit: `f795974`.
