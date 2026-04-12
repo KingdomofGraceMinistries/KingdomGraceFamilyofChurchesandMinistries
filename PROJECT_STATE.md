@@ -7,6 +7,63 @@
 
 ---
 
+## 🚨 RESUME HERE (next Claude Code session) 🚨
+
+All HTML/JS/SQL changes are **written and pushed**. Latest commit: `f795974`.
+Everything that's left is **Supabase-side execution** that the previous session
+could not run because the `claude.ai Supabase` MCP connector had a stale OAuth
+token. A new project-scoped MCP server was added to `.mcp.json` right before
+the session restart — it points at the Kingdom Grace project directly:
+
+    project_ref = kseocbwhuveieqhayske
+
+### On first boot of the new session:
+
+1. Run `/mcp`, select **supabase**, complete the browser OAuth once.
+2. Confirm via ToolSearch that `mcp__supabase__execute_sql`,
+   `mcp__supabase__apply_migration`, and `mcp__supabase__deploy_edge_function`
+   (or similarly named real tools) are now available.
+3. Then execute, in order:
+
+   a. **Apply the migration** — contents of
+      `supabase/migrations/20260412_003_wins_images_outreach.sql`
+      (adds `rf_wins.image_data`, creates `rf_outreach_profiles` + RLS).
+
+   b. **Create the `wins` storage bucket and its RLS policies** — the SQL is
+      in Section 2 of `supabase/RUN_THIS_IN_SUPABASE.sql`.
+
+   c. **Upsert the photo URLs** into `rf_network_config` (Section 3 of
+      `RUN_THIS_IN_SUPABASE.sql`):
+        - `bishop_photo_url`  → `/Bishop%20Sasser.jpg`
+        - `apostle_photo_url` → `/Bishop%20Sasser%20and%20Eraka.jpg`
+        - `couple_photo_url`  → `/Bishop%20and%20Apostle.jpg`
+
+   d. **Upsert the warmer theme JSON** into `rf_network_config.themes`
+      (Section 4 of `RUN_THIS_IN_SUPABASE.sql` — the "Parchment" cream
+      palette replacing the too-bright beige).
+
+   e. **Deploy the AI proxy edge function** so the new `outreach` callType
+      becomes live. The updated source is already in
+      `supabase/functions/kgfcm-ai-proxy/index.ts`. Use
+      `mcp__supabase__deploy_edge_function` or, if it's easier,
+      `npx supabase functions deploy kgfcm-ai-proxy --no-verify-jwt`.
+
+4. Smoke test: open the Vercel-deployed URL, bishop login, tap View App,
+   open Outreach Insights, enter a city + demographics, tap Generate.
+   Post a Win with a photo. Open the Bishop Profile and confirm the
+   couple photo shows in full with no chopped heads.
+
+5. Report the handoff URL to the user so they can forward to Bishop Sasser.
+
+### What is already done (no action needed)
+
+- All HTML / JS changes (commits `21f3d1b`, `9ce7fd0`, `f795974`)
+- Photo files are committed to the repo root; Vercel serves them
+- `supabase/RUN_THIS_IN_SUPABASE.sql` contains every SQL statement needed
+- `.mcp.json` (project-scoped supabase MCP server) — commit it if desired
+
+---
+
 ## Current Session (2026-04-12) — SHIP-DAY PUNCH LIST — DONE
 
 - [x] **Fix couples section photo cropping** — switched to `object-fit: contain` with taller max-height so full portraits show. Commit `21f3d1b`.
