@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v7';
+const CACHE_NAME = 'kg-pastoral-v8';
 const CACHE_URLS = [
   '/',
   '/kg-pastoral-network.html',

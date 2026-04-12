@@ -1296,70 +1296,188 @@ async function saveBreakthrough(fastId){
 }
 
 // ============================================================
-// EVENTS / CALENDAR
+// EVENTS / CALENDAR — dynamic month grid
 // ============================================================
+function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayStr(){ return ymd(new Date()); }
+
 async function loadEvents(){
   const body=$('events-body'); if(!body) return;
   body.innerHTML=loading();
-  const today=new Date().toISOString().slice(0,10);
+  if(!ST.calendarFocus){
+    const t=new Date();
+    ST.calendarFocus={year:t.getFullYear(),month:t.getMonth()};
+  }
+  if(!ST.selectedEventDate) ST.selectedEventDate=todayStr();
   try {
-    const events=await sbS('rf_events',{select:'*',order:'event_date.asc'});
-    const composer = isDashboardUser() ? `
-      <div class="pw-item" style="margin-bottom:14px;border:1px solid var(--brh)">
-        <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold);margin-bottom:8px">Create an Event</div>
-        <input class="fin" id="evt-title" placeholder="Title — e.g. Regional Gathering">
-        <textarea class="fin" id="evt-desc" placeholder="Description" style="min-height:60px"></textarea>
-        <div class="frow">
-          <div><label class="flbl">Event date</label><input class="fin" id="evt-date" type="date" value="${today}"></div>
-          <div><label class="flbl">End date (optional)</label><input class="fin" id="evt-enddate" type="date"></div>
-        </div>
-        <div class="frow">
-          <div><label class="flbl">Time</label><input class="fin" id="evt-time" placeholder="e.g. 7:00 PM CST"></div>
-          <div><label class="flbl">Type</label>
-            <select class="fin" id="evt-type">
-              <option value="">(optional)</option>
-              <option>Conference</option>
-              <option>Revival</option>
-              <option>Ordination</option>
-              <option>Retreat</option>
-              <option>Fast</option>
-              <option>Prayer Night</option>
-              <option>Council Meeting</option>
-              <option>Training</option>
-              <option>Other</option>
-            </select>
-          </div>
-        </div>
-        <label class="flbl">Location</label><input class="fin" id="evt-location" placeholder="Venue or address">
-        <label class="flbl">Link (optional — zoom, map, etc.)</label><input class="fin" id="evt-url" placeholder="https://…">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mist);margin:6px 0"><input type="checkbox" id="evt-virtual"> This is a virtual / online event</label>
-        <div class="err" id="evt-err"></div>
-        <button class="fsub" id="evt-create-btn" onclick="createEvent()">Post event &rarr;</button>
-      </div>` : '';
-    const upcoming=events.filter(e=>e.event_date>=today);
-    const past=events.filter(e=>e.event_date<today).reverse();
-    const renderEvent=e=>`<div class="pw-item" style="margin-bottom:10px">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="background:var(--gold3);border:0.5px solid var(--gold);border-radius:var(--rs);padding:8px 10px;text-align:center;flex-shrink:0;min-width:50px">
-          <div style="font-size:10px;color:var(--gold);text-transform:uppercase">${new Date(e.event_date+'T00:00').toLocaleDateString('en-US',{month:'short'})}</div>
-          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--gold);line-height:1">${new Date(e.event_date+'T00:00').getDate()}</div>
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost)">${esc(e.title||'Event')}</div>
-          ${e.event_type?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-top:2px">${esc(e.event_type)}</div>`:''}
-          ${e.event_time?`<div style="font-size:12px;color:var(--mist);margin-top:4px">🕒 ${esc(e.event_time)}</div>`:''}
-          ${e.location?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${e.is_virtual?'💻':'📍'} ${esc(e.location)}</div>`:''}
-          ${e.end_date&&e.end_date!==e.event_date?`<div style="font-size:11px;color:var(--ash);margin-top:2px">Through ${esc(e.end_date)}</div>`:''}
-          ${e.description?`<div style="font-size:12px;color:var(--mist);margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(e.description)}</div>`:''}
-          ${e.location_url?`<a href="${esc(e.location_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--gold)">Open link →</a>`:''}
+    ST.allEvents = await sbS('rf_events',{select:'*',order:'event_date.asc'});
+    renderEventsScreen();
+  } catch(e){ body.innerHTML='<div class="empty">Could not load events.</div>'; }
+}
+
+function renderEventsScreen(){
+  const body=$('events-body'); if(!body) return;
+  const events = ST.allEvents || [];
+  const {year,month} = ST.calendarFocus;
+  const firstOfMonth = new Date(year, month, 1);
+  const lastDay = new Date(year, month+1, 0).getDate();
+  const startWeekday = firstOfMonth.getDay();
+  const monthName = firstOfMonth.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const today = todayStr();
+
+  // Build a set of date strings that have events
+  const eventsByDay = {};
+  for(const e of events){
+    (eventsByDay[e.event_date] = eventsByDay[e.event_date] || []).push(e);
+  }
+
+  // Grid cells
+  const cells = [];
+  for(let i=0;i<startWeekday;i++) cells.push(null);
+  for(let d=1; d<=lastDay; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells.push({day:d, dateStr, events: eventsByDay[dateStr] || []});
+  }
+  while(cells.length % 7 !== 0) cells.push(null);
+
+  const weekdays = ['S','M','T','W','T','F','S'];
+  const selectedEvents = ST.selectedEventDate ? (eventsByDay[ST.selectedEventDate] || []) : [];
+  const selectedLabel = ST.selectedEventDate
+    ? new Date(ST.selectedEventDate+'T00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})
+    : '';
+
+  body.innerHTML = `
+    <div style="background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <button class="pw-act" type="button" onclick="calendarPrev()" aria-label="Previous month">‹</button>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;color:var(--frost)">${monthName}</div>
+        <button class="pw-act" type="button" onclick="calendarNext()" aria-label="Next month">›</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px">
+        ${weekdays.map(d=>`<div style="text-align:center;font-size:10px;color:var(--ash);font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:4px 0">${d}</div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">
+        ${cells.map(c=>{
+          if(!c) return '<div></div>';
+          const isToday = c.dateStr === today;
+          const isSelected = c.dateStr === ST.selectedEventDate;
+          const hasEvents = c.events.length > 0;
+          const bg = isSelected ? 'var(--gold)' : isToday ? 'var(--gold3)' : 'var(--ink3)';
+          const fg = isSelected ? 'var(--ink)' : isToday ? 'var(--gold)' : 'var(--frost)';
+          const brd = isToday && !isSelected ? 'border:1px solid var(--gold)' : 'border:0.5px solid var(--br)';
+          return `<div onclick="selectCalendarDay('${c.dateStr}')" style="aspect-ratio:1;min-height:36px;${brd};border-radius:var(--rs);background:${bg};color:${fg};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:13px;font-weight:${isToday||isSelected?'700':'400'};position:relative">
+            ${c.day}
+            ${hasEvents && !isSelected ? '<div style="width:4px;height:4px;border-radius:50%;background:var(--gold);margin-top:2px"></div>' : ''}
+            ${hasEvents && isSelected ? `<div style="font-size:9px;margin-top:1px">${c.events.length}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:10px">
+        <button class="pw-act" type="button" onclick="calendarToday()">Today</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:15px;font-weight:600;color:var(--gold);flex:1;min-width:0">${esc(selectedLabel)}</div>
+      ${ST.session ? `<button class="fsub" type="button" style="width:auto;padding:8px 14px;font-size:12px" onclick="openEventCompose()">+ Add Event</button>` : ''}
+    </div>
+
+    <div id="event-compose-wrap"></div>
+
+    <div id="event-day-list">
+      ${selectedEvents.length ? selectedEvents.map(renderEventCard).join('') : '<div class="empty">Nothing on this day yet. Tap + Add Event to post something.</div>'}
+    </div>
+  `;
+}
+
+function renderEventCard(e){
+  const canDelete = ST.session && (isDashboardUser() || ST.session.userId===e.pastor_id);
+  return `<div class="pw-item" style="margin-bottom:10px">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="background:var(--gold3);border:0.5px solid var(--gold);border-radius:var(--rs);padding:8px 10px;text-align:center;flex-shrink:0;min-width:50px">
+        <div style="font-size:10px;color:var(--gold);text-transform:uppercase">${new Date(e.event_date+'T00:00').toLocaleDateString('en-US',{month:'short'})}</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--gold);line-height:1">${new Date(e.event_date+'T00:00').getDate()}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost)">${esc(e.title||'Event')}</div>
+        ${e.event_type?`<div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-top:2px">${esc(e.event_type)}</div>`:''}
+        ${e.event_time?`<div style="font-size:12px;color:var(--mist);margin-top:4px">🕒 ${esc(e.event_time)}</div>`:''}
+        ${e.location?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${e.is_virtual?'💻':'📍'} ${esc(e.location)}</div>`:''}
+        ${e.end_date&&e.end_date!==e.event_date?`<div style="font-size:11px;color:var(--ash);margin-top:2px">Through ${esc(e.end_date)}</div>`:''}
+        ${e.description?`<div style="font-size:12px;color:var(--mist);margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(e.description)}</div>`:''}
+        ${e.location_url?`<a href="${esc(e.location_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;font-size:12px;color:var(--gold)">Open link →</a>`:''}
+        ${(e.pastor_name||e.church_name)?`<div style="font-size:11px;color:var(--ash);margin-top:8px;border-top:0.5px dashed var(--br);padding-top:6px">Posted by ${esc(e.pastor_name||'Network')}${e.church_name?` · ${esc(e.church_name)}`:''}</div>`:''}
+      </div>
+    </div>
+    ${canDelete?`<div class="pw-actions" style="margin-top:8px"><button class="pw-act danger" onclick="deleteEvent('${e.id}')">Remove</button></div>`:''}
+  </div>`;
+}
+
+function calendarPrev(){
+  const f=ST.calendarFocus; let m=f.month-1,y=f.year;
+  if(m<0){m=11;y--;}
+  ST.calendarFocus={year:y,month:m};
+  renderEventsScreen();
+}
+function calendarNext(){
+  const f=ST.calendarFocus; let m=f.month+1,y=f.year;
+  if(m>11){m=0;y++;}
+  ST.calendarFocus={year:y,month:m};
+  renderEventsScreen();
+}
+function calendarToday(){
+  const t=new Date();
+  ST.calendarFocus={year:t.getFullYear(),month:t.getMonth()};
+  ST.selectedEventDate=todayStr();
+  renderEventsScreen();
+}
+function selectCalendarDay(dateStr){
+  ST.selectedEventDate=dateStr;
+  renderEventsScreen();
+}
+
+function openEventCompose(){
+  const wrap=$('event-compose-wrap'); if(!wrap) return;
+  if(wrap.dataset.open==='1'){ wrap.innerHTML=''; wrap.dataset.open='0'; return; }
+  wrap.dataset.open='1';
+  const selected = ST.selectedEventDate || todayStr();
+  wrap.innerHTML = `
+    <div class="pw-item" style="margin-bottom:12px;border:1px solid var(--brh)">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold);margin-bottom:8px">Add Event for ${esc(new Date(selected+'T00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}))}</div>
+      <input class="fin" id="evt-title" placeholder="Title — e.g. Revival at First Baptist">
+      <textarea class="fin" id="evt-desc" placeholder="Description" style="min-height:60px"></textarea>
+      <div class="frow">
+        <div><label class="flbl">Date</label><input class="fin" id="evt-date" type="date" value="${selected}"></div>
+        <div><label class="flbl">End date (optional)</label><input class="fin" id="evt-enddate" type="date"></div>
+      </div>
+      <div class="frow">
+        <div><label class="flbl">Time</label><input class="fin" id="evt-time" placeholder="e.g. 7:00 PM CST"></div>
+        <div><label class="flbl">Type</label>
+          <select class="fin" id="evt-type">
+            <option value="">(optional)</option>
+            <option>Conference</option>
+            <option>Revival</option>
+            <option>Ordination</option>
+            <option>Retreat</option>
+            <option>Fast</option>
+            <option>Prayer Night</option>
+            <option>Council Meeting</option>
+            <option>Training</option>
+            <option>Guest Speaker</option>
+            <option>Other</option>
+          </select>
         </div>
       </div>
-    </div>`;
-    body.innerHTML=composer
-      +(upcoming.length?`<div class="flbl" style="margin-top:10px">Upcoming</div>${upcoming.map(renderEvent).join('')}`:'')
-      +(past.length?`<div class="flbl" style="margin-top:14px">Past</div>${past.slice(0,10).map(renderEvent).join('')}`:'')
-      +(events.length===0?'<div class="empty">No events posted yet.</div>':'');
-  } catch(e){ body.innerHTML='<div class="empty">Could not load events.</div>'; }
+      <label class="flbl">Location</label><input class="fin" id="evt-location" placeholder="Venue or address">
+      <label class="flbl">Link (optional — zoom, map, RSVP, etc.)</label><input class="fin" id="evt-url" placeholder="https://…">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mist);margin:6px 0"><input type="checkbox" id="evt-virtual"> This is a virtual / online event</label>
+      <div class="err" id="evt-err"></div>
+      <div style="display:flex;gap:8px">
+        <button class="fsub" id="evt-create-btn" onclick="createEvent()" style="flex:1">Post event →</button>
+        <button class="tnav-btn" type="button" onclick="openEventCompose()" style="padding:10px 14px">Cancel</button>
+      </div>
+    </div>
+  `;
 }
 
 async function createEvent(){
@@ -1374,7 +1492,10 @@ async function createEvent(){
     location:$('evt-location')?.value.trim()||null,
     location_url:$('evt-url')?.value.trim()||null,
     is_virtual:$('evt-virtual')?.checked||false,
-    created_by:ST.session?.name||null
+    created_by:ST.session?.name||null,
+    pastor_id:ST.session?.userId||null,
+    pastor_name:ST.session?.name||null,
+    church_name:ST.profile?.church_name||null
   };
   if(!data.title || !data.event_date){
     showErr('evt-err','Title and date are required.');
@@ -1385,8 +1506,22 @@ async function createEvent(){
     await sbI('rf_events',data);
     audit('EVENT_CREATED',{table:'rf_events',title:data.title});
     firePushNotify('blast',{message_text:'📅 New event: '+data.title+' on '+data.event_date}).catch(()=>{});
+    ST.selectedEventDate = data.event_date;
+    // jump calendar to that month
+    const d = new Date(data.event_date+'T00:00');
+    ST.calendarFocus = {year:d.getFullYear(),month:d.getMonth()};
+    const wrap=$('event-compose-wrap'); if(wrap){ wrap.innerHTML=''; wrap.dataset.open='0'; }
     loadEvents();
   } catch(e){ showErr('evt-err','Could not post. Try again.'); if(btn){ btn.disabled=false; btn.textContent='Post event →'; } }
+}
+
+async function deleteEvent(id){
+  if(!confirm('Remove this event?')) return;
+  try {
+    await sbD('rf_events','id=eq.'+id);
+    audit('EVENT_DELETED',{table:'rf_events',id});
+    loadEvents();
+  } catch(e){ alert('Could not remove.'); }
 }
 
 function loadProfile(){
