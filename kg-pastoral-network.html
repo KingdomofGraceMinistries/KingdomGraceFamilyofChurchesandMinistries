@@ -192,7 +192,13 @@ textarea.fin{resize:vertical;min-height:80px;}
 .pulse-btn.sel{border-color:var(--gold);background:var(--gold3);}
 .pulse-label{font-size:9px;color:var(--mist);}
 .pulse-btn.sel .pulse-label{color:var(--gold);}
-.auth-shell{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:32px 24px;}
+.auth-shell{display:flex;flex-direction:column;align-items:center;flex:1;padding:28px 22px 48px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;}
+.auth-shell > *{flex-shrink:0;}
+/* In-app back button (floats top-left inside #app, hidden on root screens) */
+.back-fab{position:absolute;top:12px;left:12px;z-index:50;width:40px;height:40px;border-radius:50%;border:0.5px solid var(--brh);background:rgba(10,10,15,0.72);color:var(--gold);font-size:20px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 4px 14px rgba(0,0,0,0.35);font-family:'DM Sans',sans-serif;padding:0;}
+.back-fab:hover{border-color:var(--gold);}
+.back-fab:active{transform:scale(0.94);}
+.back-fab.visible{display:flex;}
 .auth-mark{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:var(--ink);font-family:'Cormorant Garamond',serif;margin:0 auto 20px;}
 .auth-title{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--frost);text-align:center;margin-bottom:6px;}
 .auth-sub{font-size:13px;color:var(--mist);text-align:center;line-height:1.6;margin-bottom:28px;}
@@ -762,15 +768,30 @@ async function submitPin(){
 // PASTOR NAVIGATION + BACK BUTTON HANDLING
 // ============================================================
 const NAV={history:[],backTaps:0,backTimer:null};
+const ROOT_SCREENS=new Set(['s-login','s-home']);
+function updateBackFab(id){
+  const fab=document.getElementById('back-fab');
+  if(!fab) return;
+  if(ROOT_SCREENS.has(id)) fab.classList.remove('visible');
+  else fab.classList.add('visible');
+}
+function backFabClick(){
+  if(goBack()) return;
+  const cur=document.querySelector('#app .screen.active');
+  if(cur && cur.id!=='s-home' && cur.id!=='s-login'){
+    go(ST.session?'s-home':'s-login');
+  }
+}
 function go(id,skipPush){
   const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
   const prev=document.querySelector('#app .screen.active');
   if(prev&&prev.id===id) return;
   if(prev&&!skipPush) NAV.history.push(prev.id);
-  if(!skipPush) history.pushState({screen:id},'',' ');
+  if(!skipPush) history.pushState({screen:id},'','');
   document.querySelectorAll('#app .screen').forEach(s=>s.classList.remove('active'));
   const s=$(id); if(s){ s.classList.add('active'); onScreen(id); }
+  updateBackFab(id);
   applyTheme();
 }
 function goBack(){
@@ -788,7 +809,7 @@ window.addEventListener('popstate',function(e){
   // On root screen — require triple-tap to exit
   NAV.backTaps++;
   if(NAV.backTaps<3){
-    history.pushState({screen:'hold'},'',' ');
+    history.pushState({screen:'hold'},'','');
     const remaining=3-NAV.backTaps;
     showOnlineToast('Tap back '+(remaining===1?'once more':remaining+' more times')+' to exit');
     clearTimeout(NAV.backTimer);
@@ -1601,7 +1622,7 @@ function bishopViewApp(){
   $('app').style.display='';
   document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='');
   NAV.history.push({type:'dashboard'});
-  history.pushState({screen:'s-home'},'',' ');
+  history.pushState({screen:'s-home'},'','');
   go('s-home',true);
 }
 function bishopBackToDashboard(){
@@ -1671,7 +1692,7 @@ function switchBishopPanel(panel,skipPush){
   if(panel==='prayer'&&isAdmin()) return;
   const prev=ST.bishopPanel;
   if(prev===panel) return;
-  if(prev&&!skipPush){ NAV.history.push({type:'bishop',panel:prev}); history.pushState({bishop:panel},'',' '); }
+  if(prev&&!skipPush){ NAV.history.push({type:'bishop',panel:prev}); history.pushState({bishop:panel},'',''); }
   ST.bishopPanel=panel;
   document.querySelectorAll('.b-tab').forEach(t=>t.classList.remove('on'));
   // Highlight the active tab by matching onclick content
@@ -2350,6 +2371,7 @@ async function bishopRegeneratePrompt(){
 // ============================================================
 function renderPastor(){
   $('app').innerHTML=`
+<button id="back-fab" class="back-fab" type="button" aria-label="Back" onclick="backFabClick()">&larr;</button>
 <!-- LOGIN -->
 <div id="s-login" class="screen">
   <div class="auth-shell">
