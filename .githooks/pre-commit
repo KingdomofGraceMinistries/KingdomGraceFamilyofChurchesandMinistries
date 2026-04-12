@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Auto-bump sw.js CACHE_NAME whenever kg-pastoral-network.html is staged.
+# Ensures open PWA tabs pick up new HTML on next update-check.
+set -e
+
+staged=$(git diff --cached --name-only)
+echo "$staged" | grep -qx "kg-pastoral-network.html" || exit 0
+echo "$staged" | grep -qx "sw.js" && exit 0  # already bumped manually
+
+SW="sw.js"
+[ -f "$SW" ] || exit 0
+
+current=$(grep -oE "kg-pastoral-v[0-9]+" "$SW" | head -1 | grep -oE "[0-9]+$")
+[ -z "$current" ] && exit 0
+next=$((current + 1))
+
+# In-place bump (portable across GNU/BSD sed)
+tmp=$(mktemp)
+sed "s/kg-pastoral-v${current}/kg-pastoral-v${next}/" "$SW" > "$tmp" && mv "$tmp" "$SW"
+
+git add "$SW"
+echo "pre-commit: bumped sw.js cache v${current} -> v${next}"
