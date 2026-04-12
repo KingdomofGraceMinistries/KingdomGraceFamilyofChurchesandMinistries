@@ -7,19 +7,26 @@
 
 ---
 
-## Current Session (2026-04-12) — SHIP-DAY PUNCH LIST
+## Current Session (2026-04-12) — SHIP-DAY PUNCH LIST — DONE
 
-### In progress
+- [x] **Fix couples section photo cropping** — switched to `object-fit: contain` with taller max-height so full portraits show. Commit `21f3d1b`.
+- [x] **Apostle page photo** — circle avatar replaced with rectangular hero frame on both dashboard and pastor-facing screens. Commit `21f3d1b`.
+- [x] **App-screen visual outline** — responsive frame with border/shadow/rounded corners on tablet+ widths. Commit `21f3d1b`.
+- [x] **Warmer light (beige) theme** — new "Parchment" palette shipped in `supabase/RUN_THIS_IN_SUPABASE.sql`.
+- [x] **Win Wall photo upload** — `image_data` column, photo picker, upload via storage bucket, rendering on both pastor and bishop wins feeds. Commit `9ce7fd0`.
+- [x] **Giving button (Coming Soon)** — pastor home tile. Commit `9ce7fd0`.
+- [x] **Apostles' Council button (Coming Soon)** — pastor home tile. Commit `9ce7fd0`.
+- [x] **Outreach Suggester** — `s-outreach` screen, city/demographics setup, prophetic AI generation with strict guardrails, stored in `rf_outreach_profiles`. Commit `9ce7fd0`.
+- [x] **Photo URLs** — committed to repo root; `rf_network_config` updates included in `RUN_THIS_IN_SUPABASE.sql`.
 
-- [ ] **Fix couples section photo cropping** — `object-fit: cover + max-height` chops heads. Switch to `contain` with taller max.
-- [ ] **Apostle page photo** — swap circle avatar for rectangular hero showing the full couple photo (Bishop Sasser and Eraka.jpg). Update Supabase `apostle_photo_url`.
-- [ ] **App-screen visual outline** — give pastor screens the bounded/framed look the bishop panel has.
-- [ ] **Warmer light (beige) theme** — current cream is too bright; soften to warmer tone (SQL update to rf_network_config.themes).
-- [ ] **Win Wall photo upload** — add `image_data` column to rf_wins, mirror announcements upload pattern.
-- [ ] **Giving button (Coming Soon)** — 4th tile on pastor home.
-- [ ] **Apostles' Council button (Coming Soon)** — new leadership card on pastor home.
-- [ ] **Outreach Suggester** — dedicated screen (s-outreach) with first-time city/zip + demographics setup, AI-generated growth suggestions for Gen Z/Alpha, strict biblical + prophetic guardrails, no hallucination.
-- [ ] **Supabase photo uploads** — upload Bishop Sasser.jpg, Bishop Sasser and Eraka.jpg, Bishop and Apostle.jpg to Supabase Storage; update rf_network_config URLs.
+### Ship-day handoff checklist
+
+1. Run `supabase/RUN_THIS_IN_SUPABASE.sql` in the Supabase SQL Editor (applies migration, photo URLs, warm theme, wins storage bucket).
+2. Redeploy AI proxy so the new `outreach` callType is live:
+   `npx supabase functions deploy kgfcm-ai-proxy --no-verify-jwt`
+3. Wait for Vercel to finish building `9ce7fd0` (or the most recent push).
+4. Hard-reload the app (Cmd/Ctrl + Shift + R) to clear the service worker cache.
+5. Quick smoke test: Bishop login → View App → Outreach Insights → Generate a first set of suggestions → Wins Wall → post a win with a photo.
 
 ---
 
