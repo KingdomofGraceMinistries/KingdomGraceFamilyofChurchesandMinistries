@@ -1212,28 +1212,55 @@ async function loadFasts(){
     });
     const upcoming=fasts.filter(f=>new Date(f.start_date).getTime()>nowMs);
     const past=fasts.filter(f=>new Date(f.end_date).getTime()+86400000<nowMs);
+    const dayMs=86400000;
+    const canManage=isDashboardUser();
     const renderFast=(f,label)=>{
       const mine=ST.session?.userId && parts.find(p=>p.fast_id===f.id&&p.pastor_id===ST.session.userId);
       const joined=parts.filter(p=>p.fast_id===f.id);
       const breakthroughs=joined.filter(p=>p.breakthrough_text&&p.breakthrough_text.trim());
+      const startMs=new Date(f.start_date).getTime();
+      const endMs=new Date(f.end_date).getTime();
+      const totalDays=Math.round((endMs-startMs)/dayMs)+1;
+      const dayIdx=Math.floor((nowMs-startMs)/dayMs)+1;
+      const isActive=nowMs>=startMs && nowMs<=endMs+dayMs;
+      const dayCounter=isActive && totalDays>1 ? `Day ${Math.max(1,Math.min(dayIdx,totalDays))} of ${totalDays}` : '';
+      const progressPct=isActive && totalDays>1 ? Math.max(0,Math.min(100,((nowMs-startMs)/(endMs+dayMs-startMs))*100)) : 0;
+      const avatarStack=joined.slice(0,5).map((p,i)=>{
+        const init=(p.pastor_name||'?').trim().charAt(0).toUpperCase();
+        const img=p.avatar_url?`<img src="${esc(p.avatar_url)}" style="width:100%;height:100%;object-fit:cover">`:init;
+        return `<div title="${esc(p.pastor_name||'')}" style="width:24px;height:24px;border-radius:50%;background:var(--gold3);border:2px solid var(--ink2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--gold);font-weight:600;overflow:hidden;margin-left:${i===0?0:-8}px">${img}</div>`;
+      }).join('');
+      const overflow=joined.length>5?`<div style="width:24px;height:24px;border-radius:50%;background:var(--ink3);border:2px solid var(--ink2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--mist);margin-left:-8px">+${joined.length-5}</div>`:'';
       return `<div class="pw-item" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <div style="font-size:20px">🕯️</div>
-          <div style="flex:1">
+          <div style="flex:1;min-width:0">
             <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost)">${esc(f.title||'Fast')}</div>
             <div style="font-size:11px;color:var(--mist)">${esc(f.start_date)} &rarr; ${esc(f.end_date)}${f.fast_type?' &middot; '+esc(f.fast_type):''}</div>
           </div>
           ${label?`<span class="pill pill-gold">${label}</span>`:''}
         </div>
+        ${dayCounter?`<div style="font-size:11px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${dayCounter}</div>
+          <div style="height:4px;background:var(--gold4);border-radius:2px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:${progressPct}%;background:var(--gold)"></div></div>`:''}
         ${f.description?`<div style="font-size:13px;color:var(--mist);line-height:1.6;margin-bottom:8px;white-space:pre-wrap">${esc(f.description)}</div>`:''}
-        ${f.scripture_ref?`<div style="font-size:11px;color:var(--ash);font-style:italic;margin-bottom:8px">${esc(f.scripture_ref)}</div>`:''}
-        <div style="font-size:11px;color:var(--gold);margin-bottom:6px">🙏 ${joined.length} ${joined.length===1?'pastor':'pastors'} in agreement</div>
-        ${ST.session?.role==='pastor' && !mine ? `<button class="pw-act on" onclick="joinFast('${f.id}')">Count me in</button>`:''}
+        ${f.scripture_ref?`<div style="border-left:2px solid var(--gold);padding:6px 10px;margin-bottom:10px;background:var(--gold4);border-radius:0 var(--rs) var(--rs) 0"><div style="font-family:'Cormorant Garamond',serif;font-size:13px;color:var(--gold2);font-style:italic">${esc(f.scripture_ref)}</div></div>`:''}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          ${joined.length?`<div style="display:flex;align-items:center">${avatarStack}${overflow}</div>`:''}
+          <div style="font-size:11px;color:var(--gold)">🙏 ${joined.length} ${joined.length===1?'pastor':'pastors'} in agreement</div>
+        </div>
+        ${ST.session?.role==='pastor' && !mine ? `<button class="pw-act on" onclick="joinFast('${f.id}',this)">Count me in</button>`:''}
         ${mine ? `
           <div style="margin-top:8px;padding:8px;background:var(--ink3);border-radius:var(--rs)">
-            <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">You're in agreement</div>
-            <textarea class="fin" id="bt-${f.id}" style="margin-bottom:6px;min-height:50px;font-size:12px" placeholder="Share a breakthrough or testimony…">${esc(mine.breakthrough_text||'')}</textarea>
-            <button class="pw-act" onclick="saveBreakthrough('${f.id}')">Save testimony</button>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <div style="flex:1;font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase">You're in agreement</div>
+              <button class="pw-act" onclick="leaveFast('${f.id}')" style="font-size:10px;color:var(--mist)">Withdraw</button>
+            </div>
+            ${mine.breakthrough_text ? `<div style="font-size:12px;color:var(--mist);line-height:1.5;margin-bottom:6px;white-space:pre-wrap;font-style:italic">"${esc(mine.breakthrough_text)}"</div>` : ''}
+            <div id="bt-wrap-${f.id}" style="display:none">
+              <textarea class="fin" id="bt-${f.id}" style="margin-bottom:6px;min-height:50px;font-size:12px" placeholder="Share a breakthrough or testimony…">${esc(mine.breakthrough_text||'')}</textarea>
+              <button class="pw-act" onclick="saveBreakthrough('${f.id}')">Save testimony</button>
+            </div>
+            <button class="pw-act" onclick="toggleBreakthrough('${f.id}')" id="bt-toggle-${f.id}">${mine.breakthrough_text?'Edit testimony':'Share a testimony'}</button>
           </div>
         ` : ''}
         ${breakthroughs.length?`<div style="margin-top:10px">
@@ -1243,13 +1270,27 @@ async function loadFasts(){
             <div style="font-size:12px;color:var(--mist);line-height:1.5;margin-top:2px;white-space:pre-wrap">${esc(b.breakthrough_text)}</div>
           </div>`).join('')}
         </div>`:''}
+        ${canManage?`<div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--br)">
+          <button class="pw-act" onclick="editFast('${f.id}')" style="font-size:11px">Edit</button>
+          <button class="pw-act danger" onclick="deleteFast('${f.id}')" style="font-size:11px">Delete</button>
+        </div>`:''}
       </div>`;
     };
+    const pastHtml = past.length
+      ? `<div class="flbl" style="margin-top:10px">Past</div>`
+        + past.slice(0, ST.fastsPastShown||5).map(f=>renderFast(f,'')).join('')
+        + (past.length>(ST.fastsPastShown||5)?`<button class="pw-act" onclick="ST.fastsPastShown=(ST.fastsPastShown||5)+10;loadFasts()" style="margin-top:6px">Show more past fasts</button>`:'')
+      : '';
+    const emptyState = fasts.length===0
+      ? (canManage
+          ? '<div class="empty" style="padding:24px 16px"><div style="font-size:32px;margin-bottom:8px">🕯️</div><div style="font-family:\'Cormorant Garamond\',serif;font-size:16px;color:var(--frost);margin-bottom:4px">Call the network to consecration</div><div style="font-size:12px;color:var(--mist)">Declare a fast above and rally the pastors to stand in agreement.</div></div>'
+          : '<div class="empty" style="padding:24px 16px"><div style="font-size:32px;margin-bottom:8px">🕯️</div><div style="font-size:13px;color:var(--mist)">No fasts called right now. The Bishop will notify you when the network is called to consecration.</div></div>')
+      : '';
     body.innerHTML=composer
       +(active.length?`<div class="flbl" style="margin-top:10px">Active now</div>${active.map(f=>renderFast(f,'LIVE')).join('')}`:'')
       +(upcoming.length?`<div class="flbl" style="margin-top:10px">Upcoming</div>${upcoming.map(f=>renderFast(f,'')).join('')}`:'')
-      +(past.length?`<div class="flbl" style="margin-top:10px">Past</div>${past.slice(0,10).map(f=>renderFast(f,'')).join('')}`:'')
-      +(fasts.length===0?'<div class="empty">No fasts declared yet.</div>':'');
+      +pastHtml
+      +emptyState;
   } catch(e){ body.innerHTML='<div class="empty">Could not load fasts.</div>'; }
 }
 
@@ -1277,13 +1318,37 @@ async function declareFast(){
   } catch(e){ showErr('fast-err','Could not declare. Try again.'); if(btn){ btn.disabled=false; btn.textContent='Declare fast →'; } }
 }
 
-async function joinFast(id){
+async function joinFast(id,btn){
   if(!ST.session?.userId) return;
+  if(btn){ btn.disabled=true; btn.textContent='Joining...'; }
   try {
+    const existing=await sbS('rf_fast_participants',{select:'id',fast_id:'eq.'+id,pastor_id:'eq.'+ST.session.userId});
+    if(existing.length){ loadFasts(); return; }
     await sbI('rf_fast_participants',{fast_id:id,pastor_id:ST.session.userId,pastor_name:ST.session.name||null,avatar_url:ST.profile?.avatar_url||null});
     audit('FAST_JOINED',{table:'rf_fast_participants',fast_id:id});
     loadFasts();
-  } catch(e){ /* already joined or network */ loadFasts(); }
+  } catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='Could not join — retry'; }
+  }
+}
+
+async function leaveFast(id){
+  if(!ST.session?.userId) return;
+  if(!confirm('Withdraw from this fast? You can rejoin later.')) return;
+  try {
+    await sbD('rf_fast_participants',`fast_id=eq.${id}&pastor_id=eq.${ST.session.userId}`);
+    audit('FAST_LEFT',{table:'rf_fast_participants',fast_id:id});
+    loadFasts();
+  } catch(e){ alert('Could not withdraw — try again.'); }
+}
+
+function toggleBreakthrough(fastId){
+  const wrap=$('bt-wrap-'+fastId); const toggle=$('bt-toggle-'+fastId);
+  if(!wrap) return;
+  const show=wrap.style.display==='none';
+  wrap.style.display=show?'block':'none';
+  if(toggle) toggle.style.display=show?'none':'inline-block';
+  if(show){ const ta=$('bt-'+fastId); if(ta) ta.focus(); }
 }
 
 async function saveBreakthrough(fastId){
@@ -1291,8 +1356,37 @@ async function saveBreakthrough(fastId){
   const text=ta.value.trim(); if(!text) return;
   try {
     await sbU('rf_fast_participants',`fast_id=eq.${fastId}&pastor_id=eq.${ST.session.userId}`,{breakthrough_text:text,breakthrough_at:new Date().toISOString()});
+    audit('FAST_BREAKTHROUGH',{table:'rf_fast_participants',fast_id:fastId});
     loadFasts();
   } catch(e){ ta.placeholder='Could not save — try again'; }
+}
+
+async function editFast(id){
+  if(!isDashboardUser()) return;
+  try {
+    const rows=await sbS('rf_fasts',{select:'*',id:'eq.'+id});
+    if(!rows.length) return;
+    const f=rows[0];
+    const title=window.prompt('Title',f.title||''); if(title===null) return;
+    const desc=window.prompt('Purpose / description',f.description||''); if(desc===null) return;
+    const start=window.prompt('Start date (YYYY-MM-DD)',f.start_date||''); if(start===null) return;
+    const end=window.prompt('End date (YYYY-MM-DD)',f.end_date||''); if(end===null) return;
+    const scripture=window.prompt('Scripture reference',f.scripture_ref||''); if(scripture===null) return;
+    await sbU('rf_fasts','id=eq.'+id,{title:title.trim(),description:desc.trim()||null,start_date:start.trim(),end_date:end.trim(),scripture_ref:scripture.trim()||null});
+    audit('FAST_EDITED',{table:'rf_fasts',fast_id:id});
+    loadFasts();
+  } catch(e){ alert('Could not update fast.'); }
+}
+
+async function deleteFast(id){
+  if(!isDashboardUser()) return;
+  if(!confirm('Delete this fast? Participants and breakthroughs will be removed too.')) return;
+  try {
+    await sbD('rf_fast_participants','fast_id=eq.'+id);
+    await sbD('rf_fasts','id=eq.'+id);
+    audit('FAST_DELETED',{table:'rf_fasts',fast_id:id});
+    loadFasts();
+  } catch(e){ alert('Could not delete.'); }
 }
 
 // ============================================================
@@ -1915,13 +2009,18 @@ async function requestPinReset(){
   if(!email){showErr('reset-err','Please enter your email.');return;}
   const btn=$('reset-req-btn'); btn.disabled=true; btn.textContent='Checking...';
   try {
-    const rows=await sbS('rf_pastors',{select:'id,email',email:'eq.'+email,status:'eq.active'});
-    if(!rows.length){showErr('reset-err','No active pastor found with that email.');btn.disabled=false;btn.textContent='Send reset code →';return;}
-    // Generate a 6-character reset code
+    let table='rf_pastors', row=null;
+    const pastors=await sbS('rf_pastors',{select:'id,email',email:'eq.'+email,status:'eq.active'});
+    if(pastors.length){ row=pastors[0]; }
+    else {
+      const admins=await sbS('rf_admins',{select:'id,email',email:'eq.'+email,status:'eq.active'});
+      if(admins.length){ row=admins[0]; table='rf_admins'; }
+    }
+    if(!row){showErr('reset-err','No active account found with that email.');btn.disabled=false;btn.textContent='Send reset code →';return;}
     const code=Math.random().toString(36).slice(2,8).toUpperCase();
-    const expires=new Date(Date.now()+30*60*1000).toISOString(); // 30 min
-    await sbU('rf_pastors','id=eq.'+rows[0].id,{reset_token:code,reset_token_expires:expires});
-    audit('PIN_RESET_REQUESTED',{table:'rf_pastors',targetId:rows[0].id,email});
+    const expires=new Date(Date.now()+30*60*1000).toISOString();
+    await sbU(table,'id=eq.'+row.id,{reset_token:code,reset_token_expires:expires});
+    audit('PIN_RESET_REQUESTED',{table,targetId:row.id,email});
     hideErr('reset-err');
     showOk('reset-ok','Reset code: '+code+'\n\nIn production this would be emailed. For now, share it with your Bishop or note it down. Code expires in 30 minutes.');
     const sec=$('reset-token-section'); if(sec) sec.style.display='block';
@@ -1936,13 +2035,18 @@ async function confirmPinReset(){
   if(!code){showErr('reset-err','Enter the reset code.');return;}
   if(!newPin||newPin.length<6){showErr('reset-err','PIN must be 6 digits.');return;}
   try {
-    const rows=await sbS('rf_pastors',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
-    if(!rows.length){showErr('reset-err','Pastor not found.');return;}
-    const p=rows[0];
-    if(!p.reset_token||p.reset_token!==code){showErr('reset-err','Invalid reset code.');return;}
-    if(new Date(p.reset_token_expires)<new Date()){showErr('reset-err','Reset code has expired. Request a new one.');return;}
-    await sbU('rf_pastors','id=eq.'+p.id,{pin_hash:btoa(newPin),reset_token:null,reset_token_expires:null});
-    audit('PIN_RESET_COMPLETE',{table:'rf_pastors',targetId:p.id});
+    let table='rf_pastors', row=null;
+    const pastors=await sbS('rf_pastors',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
+    if(pastors.length){ row=pastors[0]; }
+    else {
+      const admins=await sbS('rf_admins',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
+      if(admins.length){ row=admins[0]; table='rf_admins'; }
+    }
+    if(!row){showErr('reset-err','Account not found.');return;}
+    if(!row.reset_token||row.reset_token!==code){showErr('reset-err','Invalid reset code.');return;}
+    if(new Date(row.reset_token_expires)<new Date()){showErr('reset-err','Reset code has expired. Request a new one.');return;}
+    await sbU(table,'id=eq.'+row.id,{pin_hash:btoa(newPin),reset_token:null,reset_token_expires:null});
+    audit('PIN_RESET_COMPLETE',{table,targetId:row.id});
     hideErr('reset-err');
     showOk('reset-ok','PIN updated! You can now sign in.');
     setTimeout(()=>go('s-login'),2000);
@@ -1987,7 +2091,7 @@ function showPinLogin(role){
   }
   if(title) title.textContent=role==='bishop'?'Bishop Access':role==='admin'?'Admin Access':'Pastor Login';
   if(sub) sub.textContent=role==='bishop'?'Enter your master PIN':role==='admin'?'Enter your admin PIN':'Enter your 6-digit PIN';
-  const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display=role==='pastor'?'block':'none';
+  const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display=(role==='pastor'||role==='admin')?'block':'none';
   hideErr('pin-err');
   go('s-pin');
 }
@@ -2132,39 +2236,46 @@ async function loadBishopAnnouncements(){
   } catch(e){panel.innerHTML='<div class="empty">Could not load announcements.</div>';}
 }
 
-let bAnnPhotoData=null;
+let bAnnPhotoFile=null;
 function handleBAnnPhoto(input){
   const file=input.files[0]; if(!file) return;
   if(file.size>4*1024*1024){alert('Photo must be under 4MB.');return;}
+  bAnnPhotoFile=file;
   const r=new FileReader();
   r.onload=e=>{
-    bAnnPhotoData=e.target.result;
     const prev=$('b-ann-photo-preview');
-    if(prev) prev.innerHTML=`<img src="${bAnnPhotoData}" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--rm);margin-top:8px">
+    if(prev) prev.innerHTML=`<img src="${e.target.result}" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--rm);margin-top:8px">
       <button onclick="clearBAnnPhoto()" style="font-size:11px;color:var(--flame);background:none;border:none;cursor:pointer;margin-top:4px">✕ Remove photo</button>`;
   };
   r.readAsDataURL(file);
 }
-function clearBAnnPhoto(){ bAnnPhotoData=null; const p=$('b-ann-photo-preview'); if(p) p.innerHTML=''; }
+function clearBAnnPhoto(){ bAnnPhotoFile=null; const p=$('b-ann-photo-preview'); if(p) p.innerHTML=''; }
 
 async function submitBishopAnn(){
   const ta=$('b-ann-input'),btn=$('b-ann-submit-btn');
   const text=ta?.value.trim();
-  if(!text&&!bAnnPhotoData){showErr('b-ann-err','Add a message or photo.');return;}
+  if(!text&&!bAnnPhotoFile){showErr('b-ann-err','Add a message or photo.');return;}
   btn.disabled=true; btn.textContent='Posting...';
   try {
+    let imageUrl=null;
+    if(bAnnPhotoFile){
+      btn.textContent='Uploading photo...';
+      const ext=bAnnPhotoFile.name.split('.').pop()||'jpg';
+      imageUrl=await storageUpload('announcements',`bishop/${Date.now()}.${ext}`,bAnnPhotoFile);
+    }
     await sbI('rf_announcements',{
       pastor_id:'bishop',
       title:$('b-ann-title')?.value.trim()||'',
       body:text||'',
-      image_data:bAnnPhotoData||null,
+      image_data:imageUrl||null,
       is_pinned:false,
       status:'active'
     });
     firePushNotify('announcement',{pastor_id:'bishop',title:$('b-ann-title')?.value.trim()||'',body:text||''});
     if(ta) ta.value='';
     if($('b-ann-title')) $('b-ann-title').value='';
-    bAnnPhotoData=null;
+    bAnnPhotoFile=null;
+    const prev=$('b-ann-photo-preview'); if(prev) prev.innerHTML='';
     showOk('b-ann-ok','Posted to all pastors.');
     setTimeout(()=>{ const ok=$('b-ann-ok'); if(ok) ok.style.display='none'; },2500);
     loadBishopAnnouncements();
@@ -2940,6 +3051,8 @@ async function loadManageAdmins(){
         <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">Admins can manage invites, messages, announcements, and view pastors — but cannot see private prayer requests.</div>
         <label class="flbl">Admin Name</label>
         <input class="fin" id="admin-name" placeholder="First and Last name">
+        <label class="flbl">Email Address</label>
+        <input class="fin" id="admin-email" type="email" placeholder="admin@church.org">
         <label class="flbl">6-Digit PIN for this admin</label>
         <input class="fin" id="admin-pin" type="number" inputmode="numeric" placeholder="e.g. 123456" maxlength="6">
         <div class="err" id="admin-err"></div>
@@ -2947,12 +3060,16 @@ async function loadManageAdmins(){
         <button class="fsub" onclick="addAdmin()" style="padding:12px;font-size:13px">Add Admin →</button>
       </div>
       <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">${admins.length} Admin${admins.length!==1?'s':''}</div>
-      ${admins.length?admins.map(a=>`<div class="pw-item" style="display:flex;align-items:center;gap:12px">
+      ${admins.length?admins.map(a=>`<div class="pw-item" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="width:40px;height:40px;border-radius:50%;background:rgba(58,110,168,0.15);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🔧</div>
-        <div style="flex:1;min-width:0">
+        <div style="flex:1;min-width:140px">
           <div style="font-size:14px;font-weight:500;color:var(--frost)">${esc(a.full_name)}</div>
-          <div style="font-size:11px;color:var(--ash)">Added ${timeAgo(a.created_at)} · ${a.status==='active'?'<span style="color:var(--sage)">Active</span>':'<span style="color:var(--flame)">Disabled</span>'}</div>
+          <div style="font-size:11px;color:var(--ash)">${esc(a.email||'no email')} · Added ${timeAgo(a.created_at)} · ${a.status==='active'?'<span style="color:var(--sage)">Active</span>':'<span style="color:var(--flame)">Locked</span>'}</div>
         </div>
+        ${a.status==='active'
+          ? `<button class="pw-act" onclick="lockAdmin('${a.id}',this)" style="flex-shrink:0">Lock</button>`
+          : `<button class="pw-act on" onclick="unlockAdmin('${a.id}',this)" style="flex-shrink:0">Unlock</button>`}
+        <button class="pw-act" onclick="bishopResetAdminPin('${a.id}')" style="flex-shrink:0">Reset PIN</button>
         <button class="pw-act danger" onclick="removeAdmin('${a.id}',this)" style="flex-shrink:0">Remove</button>
       </div>`).join(''):'<div class="empty">No admins added yet.</div>'}`;
   } catch(e){ panel.innerHTML='<div class="empty">Could not load admins.</div>'; }
@@ -2960,21 +3077,50 @@ async function loadManageAdmins(){
 
 async function addAdmin(){
   const name=$('admin-name')?.value.trim();
+  const email=$('admin-email')?.value.trim().toLowerCase();
   const pin=$('admin-pin')?.value.trim();
   if(!name){showErr('admin-err','Please enter the admin\'s name.');return;}
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){showErr('admin-err','Please enter a valid email.');return;}
   if(!pin||pin.length<6){showErr('admin-err','PIN must be 6 digits.');return;}
   try {
-    await sbI('rf_admins',{full_name:name,pin_hash:btoa(pin),status:'active'});
-    audit('ADMIN_ADDED',{table:'rf_admins',admin_name:name});
-    $('admin-name').value=''; $('admin-pin').value='';
+    await sbI('rf_admins',{full_name:name,email,pin_hash:btoa(pin),status:'active'});
+    audit('ADMIN_ADDED',{table:'rf_admins',admin_name:name,email});
+    $('admin-name').value=''; $('admin-email').value=''; $('admin-pin').value='';
     hideErr('admin-err');
     showOk('admin-ok',name+' has been added as an admin. Share their PIN with them: '+pin);
     loadManageAdmins();
-  } catch(e){showErr('admin-err','Could not add admin.');}
+  } catch(e){showErr('admin-err','Could not add admin. Email may already be in use.');}
+}
+
+async function lockAdmin(id,btn){
+  if(!confirm('Lock this admin out? They will not be able to log in until unlocked.')) return;
+  try {
+    await sbU('rf_admins','id=eq.'+id,{status:'locked'});
+    audit('ADMIN_LOCKED',{table:'rf_admins',targetId:id});
+    loadManageAdmins();
+  } catch(e){ btn.textContent='Error — retry'; }
+}
+
+async function unlockAdmin(id,btn){
+  try {
+    await sbU('rf_admins','id=eq.'+id,{status:'active'});
+    audit('ADMIN_UNLOCKED',{table:'rf_admins',targetId:id});
+    loadManageAdmins();
+  } catch(e){ btn.textContent='Error — retry'; }
+}
+
+async function bishopResetAdminPin(adminId){
+  const code=Math.random().toString(36).slice(2,8).toUpperCase();
+  const expires=new Date(Date.now()+60*60*1000).toISOString();
+  try {
+    await sbU('rf_admins','id=eq.'+adminId,{reset_token:code,reset_token_expires:expires});
+    audit('BISHOP_ADMIN_PIN_RESET',{table:'rf_admins',targetId:adminId});
+    window.prompt('Share this PIN reset code with the admin. It expires in 1 hour. They can use it on the "Reset your PIN" screen:',code);
+  } catch(e){ alert('Could not generate reset code.'); }
 }
 
 async function removeAdmin(id,btn){
-  if(!confirm('Remove this admin? They will no longer be able to log in.')) return;
+  if(!confirm('Permanently remove this admin? They will no longer be able to log in. Use Lock instead if temporary.')) return;
   try {
     await sbD('rf_admins','id=eq.'+id);
     audit('ADMIN_REMOVED',{table:'rf_admins',targetId:id});
@@ -3824,9 +3970,15 @@ function initNotifPolling(){
     if(NOTIF.audioCtx&&NOTIF.audioCtx.state==='suspended') NOTIF.audioCtx.resume();
     document.removeEventListener('click',onFirstClick);
   },{once:true});
-  // Start polling
+  // Start polling — 60s when visible, paused when tab hidden (battery-friendly)
+  const startPoll=()=>{ if(!NOTIF.pollInterval) NOTIF.pollInterval=setInterval(pollForNotifications,60000); };
+  const stopPoll=()=>{ if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; } };
   pollForNotifications();
-  NOTIF.pollInterval=setInterval(pollForNotifications, 30000);
+  startPoll();
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){ stopPoll(); }
+    else { pollForNotifications(); startPoll(); }
+  });
 }
 
 async function pollForNotifications(){
