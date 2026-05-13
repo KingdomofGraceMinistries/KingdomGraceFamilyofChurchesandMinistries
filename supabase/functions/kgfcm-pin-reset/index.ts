@@ -25,7 +25,7 @@ import { rateLimit, padTo, generateCode, hashCode } from "../_shared/rate_limit.
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY   = Deno.env.get("RESEND_API_KEY")            ?? "";
-const RESEND_FROM      = Deno.env.get("RESEND_FROM")               ?? "Kingdom Grace <onboarding@resend.dev>";
+const RESEND_FROM      = Deno.env.get("RESEND_FROM")               ?? "Kingdom Grace <noreply@kingdomgracefamily.com>";
 const NETWORK_SHORT    = Deno.env.get("NETWORK_SHORT")             ?? "Kingdom Grace";
 const MIN_RESPONSE_MS  = 600;
 const EMAIL_RE         = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -77,12 +77,15 @@ Deno.serve(async (req: Request) => {
       if (upd.error) {
         await audit(supa, "RESET_DB_WRITE_FAILED", { ip_address: ip, error: String(upd.error) });
       } else {
-        const emailOk = await sendResetEmail(target.email, code);
+        const emailRes = await sendResetEmail(target.email, code);
         await audit(supa, "RESET_CODE_SENT", {
-          ip_address: ip,
+          ip_address:   ip,
           target_table: target.table,
           target_id:    target.id,
-          delivered:    emailOk,
+          delivered:    emailRes.ok,
+          send_status:  emailRes.status,
+          resend_id:    emailRes.id,
+          send_error:   emailRes.error,
         });
       }
     } else {
@@ -118,8 +121,8 @@ async function findResetTarget(supa: SupabaseClient, email: string): Promise<Res
   return null;
 }
 
-async function sendResetEmail(to: string, code: string): Promise<boolean> {
-  if (!RESEND_API_KEY) return false;
+async function sendResetEmail(to: string, code: string): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
+  if (!RESEND_API_KEY) return { ok: false, status: 0, error: "RESEND_API_KEY not set" };
   const subject = `Your ${NETWORK_SHORT} PIN reset code`;
   const text = [
     `Your ${NETWORK_SHORT} PIN reset code is:`,
@@ -140,11 +143,15 @@ async function sendResetEmail(to: string, code: string): Promise<boolean> {
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      Authorization:   `Bearer ${RESEND_API_KEY}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
     body: JSON.stringify({ from: RESEND_FROM, to, subject, text, html }),
   });
-  return res.ok;
+  let id: string | undefined;
+  let error: string | undefined;
+  try {
+    const j = await res.json();
+    id = j?.id;
+    if (!res.ok) error = j?.message ?? j?.name ?? JSON.stringify(j).slice(0, 240);
+  } catch (_) { /* non-JSON response */ }
+  return { ok: res.ok, status: res.status, id, error };
 }
