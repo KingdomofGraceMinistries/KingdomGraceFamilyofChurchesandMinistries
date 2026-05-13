@@ -450,6 +450,22 @@ async function loadConfig(){
 }
 
 // ============================================================
+// ERROR BOUNDARY — top-level catch for uncaught errors and unhandled
+// promise rejections. Never let an exception silently crash the app;
+// surface a non-intrusive toast and (best-effort) log to audit.
+// ============================================================
+function reportUnhandled(label, e){
+  try {
+    const detail = e && (e.error || e.reason || e);
+    const msg = (detail && (detail.message || detail.toString())) || 'Unknown error';
+    try { audit('CLIENT_'+label, { error: String(msg), stack: detail && detail.stack ? String(detail.stack).slice(0, 800) : null }); } catch(_) {}
+    if (typeof showOnlineToast === 'function') {
+      showOnlineToast('Something went wrong. The team has been notified.');
+    }
+  } catch(_) { /* swallow — boundary itself must never throw */ }
+}
+window.addEventListener('error',              (e) => reportUnhandled('UNCAUGHT_ERROR',     e));
+window.addEventListener('unhandledrejection', (e) => reportUnhandled('UNHANDLED_REJECTION', e));
 
 // AI GUARDRAIL
 // ============================================================
@@ -569,30 +585,189 @@ const avHTML = (url,name,size=36) => url
   : `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--ink3);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:${Math.round(size*0.38)}px;font-weight:700;color:var(--gold)">${initials(name)}</div>`;
 
 // ============================================================
-// SUPABASE
+// SUPABASE  +  AUTH
 // ============================================================
-const SB_API_KEY = () => C.supabasePublishableKey || C.supabaseAnonKey;
-const SB_AUTH_TOKEN = () => ST.session?.token || C.supabaseAnonKey;
-const SB_HDR = () => ({'Content-Type':'application/json','apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Prefer':'return=representation'});
+
+// rf_pastors safe column list. pin_bcrypt / reset_token_hash are NOT here —
+// the migration revokes those grants from authenticated; only service_role
+// reads them via edge functions. Use this constant for every rf_pastors
+// SELECT call so we never accidentally request a forbidden column.
+const PASTOR_COLS = 'id,email,full_name,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,avatar_url,status,last_checkin_at,last_pulse_score,posts_this_week,created_at,credential_type,ordination_date,ordained_by,covering_under,credential_status,role,auth_user_id';
+
+// Edge function names. Deployed without --no-verify-jwt; they accept the
+// publishable key as Authorization and apply their own rate limit + audit.
+const FN_PIN_LOGIN    = 'kgfcm-pin-login';
+const FN_PIN_REGISTER = 'kgfcm-pin-register';
+
+// Per-device remembered email for faster re-login (never the PIN).
+const LAST_EMAIL_KEY = 'kgfcm_last_email';
+
+const SB_API_KEY     = () => C.supabasePublishableKey || C.supabaseAnonKey;
+const SB_AUTH_TOKEN  = () => ST.session?.access_token || SB_API_KEY();
+const SB_HDR     = () => ({'Content-Type':'application/json','apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Prefer':'return=representation'});
 const SB_GET_HDR = () => ({'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN()});
 
+// Refresh the access_token using the refresh_token. Returns true on success.
+async function refreshSession(){
+  if(!ST.session?.refresh_token) return false;
+  try {
+    const r = await fetch(`${C.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SB_API_KEY()},
+      body: JSON.stringify({refresh_token: ST.session.refresh_token})
+    });
+    if(!r.ok) return false;
+    const data = await r.json();
+    ST.session.access_token  = data.access_token;
+    ST.session.refresh_token = data.refresh_token;
+    ST.session.expires_at    = data.expires_at;
+    saveLocal('session', ST.session);
+    return true;
+  } catch(e){ return false; }
+}
+
+// PostgREST helpers with one-shot 401 refresh-and-retry.
+async function sbWithRetry(builder){
+  let r = await builder();
+  if(r.status === 401 && await refreshSession()){
+    r = await builder();
+  }
+  return r;
+}
 async function sbI(table,data){
-  const r=await fetch(`${C.supabaseUrl}/rest/v1/${table}`,{method:'POST',headers:SB_HDR(),body:JSON.stringify(data)});
-  if(!r.ok)throw new Error((await r.json().catch(()=>({}))).message||'Insert failed');
+  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}`,{method:'POST',headers:SB_HDR(),body:JSON.stringify(data)}));
+  if(!r.ok) throw new Error((await r.json().catch(()=>({}))).message || 'Insert failed');
   return r.json();
 }
 async function sbU(table,filter,data){
-  const r=await fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:SB_HDR(),body:JSON.stringify(data)});
-  if(!r.ok)throw new Error('Update failed');
+  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:SB_HDR(),body:JSON.stringify(data)}));
+  if(!r.ok) throw new Error('Update failed');
   return r.json();
 }
 async function sbD(table,filter){
-  await fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'DELETE',headers:SB_GET_HDR()});
+  await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'DELETE',headers:SB_GET_HDR()}));
 }
 async function sbS(table,params){
-  const r=await fetch(`${C.supabaseUrl}/rest/v1/${table}?${new URLSearchParams(params)}`,{headers:SB_GET_HDR()});
-  if(!r.ok)throw new Error('Select failed');
+  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${new URLSearchParams(params)}`,{headers:SB_GET_HDR()}));
+  if(!r.ok) throw new Error('Select failed');
   return r.json();
+}
+
+// ── EDGE FUNCTION + AUTH FLOWS ──
+async function callEdgeFn(name, body){
+  const r = await fetch(`${C.supabaseUrl}/functions/v1/${name}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_API_KEY()},
+    body: JSON.stringify(body)
+  });
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+  return data;
+}
+
+function applySession(s, name){
+  ST.session = {
+    access_token:  s.access_token,
+    refresh_token: s.refresh_token,
+    expires_at:    s.expires_at,
+    userId:        s.profile_id || s.user_id,
+    authUserId:    s.user_id,
+    profileId:     s.profile_id,
+    role:          s.role,
+    name:          name || ST.session?.name || '',
+  };
+  saveLocal('session', ST.session);
+}
+
+async function signInWithPin(email, pin){
+  const session = await callEdgeFn(FN_PIN_LOGIN, {email, pin});
+  applySession(session);
+  return session;
+}
+
+async function signUpWithPin(email, full_name, pin, invite_token){
+  const session = await callEdgeFn(FN_PIN_REGISTER, {email, full_name, pin, invite_token});
+  applySession(session, full_name);
+  return session;
+}
+
+async function signOutSession(){
+  if(ST.session?.access_token){
+    try {
+      await fetch(`${C.supabaseUrl}/auth/v1/logout`, {
+        method:'POST',
+        headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+ST.session.access_token}
+      });
+    } catch(_){ /* network failure is fine; local clear still happens */ }
+  }
+  ST.session = null;
+  localStorage.removeItem(C.appId+'_session');
+  localStorage.removeItem(C.appId+'_profile');
+}
+
+// ── MAGIC LINK ──
+// Trigger Supabase Auth to email a magic link to the user. Same email that
+// owns the PIN account; auth.users.email_confirm was set during PIN login
+// so signInWithOtp won't try to create a new user.
+async function sendMagicLink(email){
+  const r = await fetch(`${C.supabaseUrl}/auth/v1/otp`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SB_API_KEY()},
+    body: JSON.stringify({
+      email,
+      create_user: false,
+      options: { email_redirect_to: location.origin + '/' }
+    })
+  });
+  if(!r.ok){
+    const data = await r.json().catch(()=>({}));
+    throw new Error(data.error_description || data.msg || 'Could not send magic link.');
+  }
+  return true;
+}
+
+// Handle the redirect that Supabase Auth sends on magic-link click. The URL
+// hash looks like `#access_token=...&refresh_token=...&expires_in=3600&type=magiclink`.
+// Extract tokens, fetch the user (for role), establish a session.
+async function consumeMagicLinkHash(){
+  if(!location.hash || location.hash.indexOf('access_token=') === -1) return false;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const access_token  = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  const expires_in    = parseInt(params.get('expires_in') || '3600', 10);
+  if(!access_token || !refresh_token) return false;
+  // Look up the user via /auth/v1/user with the access token.
+  try {
+    const u = await fetch(`${C.supabaseUrl}/auth/v1/user`, {
+      headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+access_token}
+    });
+    if(!u.ok) throw new Error('Magic-link session invalid.');
+    const user = await u.json();
+    const role = (user.app_metadata && user.app_metadata.role) || 'pastor';
+    // Resolve the profile_id (rf_pastors.id or rf_admins.id) by auth_user_id.
+    let profile_id = null, name = '';
+    if(role === 'pastor'){
+      const rows = await sbS('rf_pastors',{select:PASTOR_COLS, auth_user_id:'eq.'+user.id});
+      if(rows[0]){ profile_id = rows[0].id; name = rows[0].full_name; ST.profile = rows[0]; saveLocal('profile', rows[0]); }
+    } else {
+      const rows = await sbS('rf_admins',{select:'id,full_name,is_bishop', auth_user_id:'eq.'+user.id});
+      if(rows[0]){ profile_id = rows[0].id; name = rows[0].full_name; }
+    }
+    applySession({
+      access_token,
+      refresh_token,
+      expires_at: Math.floor(Date.now()/1000) + expires_in,
+      user_id: user.id,
+      profile_id,
+      role,
+    }, name);
+    // Clear the hash so a refresh doesn't re-process it.
+    history.replaceState(null, '', location.pathname + location.search);
+    audit('LOGIN_SUCCESS_MAGIC',{role});
+    return { role, profile_id };
+  } catch(e){
+    return false;
+  }
 }
 // ── STORAGE UPLOAD ──
 async function storageUpload(bucket, path, file){
@@ -729,43 +904,47 @@ function pinPress(v){
 async function submitPin(){
   const pin=pinBuf; pinBuf='';
   document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
-  if(ST.pinTarget==='bishop'){
-    try {
-      const cfg=await sbS('rf_network_config',{select:'value',key:'eq.bishop_pin_hash'});
-      const storedHash=cfg.length?cfg[0].value:null;
-      if(storedHash&&btoa(pin)===storedHash){
-        ST.session={userId:'bishop',role:'bishop',name:C.bishopName,token:C.supabaseKey};
-        saveLocal('session',ST.session);
-        audit('LOGIN_SUCCESS',{method:'pin',role:'bishop'});
-        launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
-      } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'bishop'}); }
-    } catch(e){ showErr('pin-err','Could not verify. Check your connection.'); }
+  const email = ($('pin-email')?.value || '').trim().toLowerCase();
+  if(!email){
+    showErr('pin-err','Please enter your email.');
     return;
   }
-  if(ST.pinTarget==='admin'){
-    try {
-      const admins=await sbS('rf_admins',{select:'*',pin_hash:'eq.'+btoa(pin),status:'eq.active'});
-      if(admins.length){
-        const a=admins[0];
-        ST.session={userId:a.id,role:'admin',name:a.full_name,permissions:a.permissions||[],token:C.supabaseKey};
-        saveLocal('session',ST.session);
-        audit('LOGIN_SUCCESS',{method:'pin',role:'admin',targetId:a.id});
-        launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
-      } else { showErr('pin-err','Incorrect admin PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'admin'}); }
-    } catch(e){ showErr('pin-err','Could not verify. Check connection.'); }
-    return;
-  }
-  // Pastor PIN
   try {
-    const rows=await sbS('rf_pastors',{select:'*','pin_hash':'eq.'+btoa(pin),status:'eq.active'});
-    if(rows.length){
-      const p=rows[0];
-      ST.session={userId:p.id,role:'pastor',name:p.full_name,token:C.supabaseKey};
-      ST.profile=p; saveLocal('session',ST.session); saveLocal('profile',p);
-      audit('LOGIN_SUCCESS',{method:'pin',role:'pastor',table:'rf_pastors',targetId:p.id});
+    const session = await signInWithPin(email, pin);
+    localStorage.setItem(LAST_EMAIL_KEY, email);
+    // Pastor profile load — bishop/admin dashboards fetch their own data on render.
+    if(session.role === 'pastor' && session.profile_id){
+      try {
+        const rows = await sbS('rf_pastors',{select:PASTOR_COLS, id:'eq.'+session.profile_id});
+        if(rows && rows[0]) { ST.profile = rows[0]; saveLocal('profile', rows[0]); }
+      } catch(_){ /* profile fetch failure is non-fatal — home screen will retry */ }
+    }
+    hideErr('pin-err');
+    if(session.role === 'bishop' || session.role === 'admin'){
+      launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
+    } else {
       go('s-home'); initNotifPolling();
-    } else { showErr('pin-err','Incorrect PIN.'); audit('LOGIN_FAILED',{method:'pin',role:'pastor'}); }
-  } catch(e){ showErr('pin-err','Could not verify. Check connection.'); }
+    }
+  } catch(e){
+    showErr('pin-err', e.message && e.message.length < 80 ? e.message : 'Incorrect credentials.');
+  }
+}
+
+async function requestMagicLink(){
+  const email = ($('pin-email')?.value || '').trim().toLowerCase();
+  if(!email){ showErr('pin-err','Enter your email first.'); return; }
+  const btn = $('magic-link-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    await sendMagicLink(email);
+    localStorage.setItem(LAST_EMAIL_KEY, email);
+    hideErr('pin-err');
+    showOk('pin-ok', 'Check your inbox — magic link sent to ' + email + '.');
+    audit('MAGIC_LINK_REQUESTED', {});
+  } catch(e){
+    showErr('pin-err', e.message || 'Could not send magic link.');
+  }
+  if(btn){ btn.disabled = false; btn.textContent = 'Email me a magic link'; }
 }
 
 // ============================================================
@@ -869,11 +1048,11 @@ function renderThemeOptions(){
     else tipEl.style.display='none';
   }
 }
-function logout(){
+async function logout(){
   audit('LOGOUT',{});
-  NAV.history=[];NAV.backTaps=0;
-  ST.session=null; ST.profile=null;
-  localStorage.removeItem(C.appId+'_session');
+  NAV.history=[]; NAV.backTaps=0;
+  await signOutSession();
+  ST.profile=null;
   if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; }
   $('bishop-app').className='';
   $('app').style.display='';
@@ -1126,7 +1305,7 @@ async function loadPastorView(id){
   if(!id){ body.innerHTML='<div class="empty">No pastor selected.</div>'; return; }
   body.innerHTML=loading();
   try {
-    const rows=await sbS('rf_pastors',{select:'*',id:'eq.'+id});
+    const rows=await sbS('rf_pastors',{select:PASTOR_COLS,id:'eq.'+id});
     if(!rows.length){ body.innerHTML='<div class="empty">Pastor not found.</div>'; return; }
     const p=rows[0];
     const gifts=Array.isArray(p.spiritual_gifts)?p.spiritual_gifts:[];
@@ -1976,31 +2155,29 @@ async function handleAvatar(input){
 }
 
 async function registerPastor(){
-  const name=$('reg-name')?.value.trim(),email=$('reg-email')?.value.trim(),token=$('reg-token')?.value.trim(),pin=$('reg-pin')?.value.trim();
+  const name=$('reg-name')?.value.trim();
+  const email=$('reg-email')?.value.trim().toLowerCase();
+  const invite_token=$('reg-token')?.value.trim();
+  const pin=$('reg-pin')?.value.trim();
   if(!name){showErr('reg-err','Please enter your name.');return;}
   if(!email){showErr('reg-err','Please enter your email.');return;}
-  if(!pin||pin.length<6){showErr('reg-err','PIN must be 6 digits.');return;}
-  if(!token){showErr('reg-err','No invite link detected. Ask your Bishop for a new one.');return;}
+  if(!pin || !/^\d{6}$/.test(pin)){showErr('reg-err','PIN must be exactly 6 digits.');return;}
+  if(!invite_token){showErr('reg-err','No invite link detected. Ask your Bishop for a new one.');return;}
   const btn=$('reg-btn'); btn.disabled=true; btn.textContent='Setting up...';
   try {
-    // Verify invite — match by token (email checked loosely for invites without email)
-    const inv=await sbS('rf_invites',{select:'*',token:'eq.'+token});
-    if(!inv.length){showErr('reg-err','This invite link is no longer valid. Ask your Bishop for a new one.');btn.disabled=false;btn.textContent='Join ${C.networkShort} →';return;}
-    if(inv[0].accepted_at){showErr('reg-err','This invite has already been used.');btn.disabled=false;btn.textContent='Join ${C.networkShort} →';return;}
-    // Create pastor
-    const rows=await sbI('rf_pastors',{email,full_name:name,pin_hash:btoa(pin),status:'active',posts_this_week:0});
-    const p=rows[0];
-    // Mark invite as accepted
-    await sbU('rf_invites','token=eq.'+token,{accepted_at:new Date().toISOString(),email:email});
-    // Try biometric setup silently — if it works, great; if not, PIN is already set
-    registerBio(p.id,p.full_name).catch(()=>{});
-    // Log in
-    ST.session={userId:p.id,role:'pastor',name:p.full_name,token:C.supabaseKey};
-    ST.profile=p; saveLocal('session',ST.session); saveLocal('profile',p);
-    audit('PASTOR_REGISTERED',{table:'rf_pastors',targetId:p.id,email});
+    // Edge function handles invite-token validation, PIN bcrypt hashing,
+    // auth.users creation, rf_pastors insert, invite acceptance, session issue.
+    const session = await signUpWithPin(email, name, pin, invite_token);
+    // Try biometric setup silently — if it works, great; if not, PIN is already set.
+    registerBio(session.user_id, name).catch(()=>{});
+    // Fetch the freshly-created profile so the home screen renders immediately.
+    try {
+      const rows = await sbS('rf_pastors',{select:PASTOR_COLS, id:'eq.'+session.profile_id});
+      if(rows && rows[0]) { ST.profile = rows[0]; saveLocal('profile', rows[0]); }
+    } catch(_){ /* profile fetch failure is non-fatal */ }
     initNotifPolling();
     go('s-home');
-  } catch(e){showErr('reg-err',e.message||'Registration failed.');}
+  } catch(e){ showErr('reg-err', e.message || 'Registration failed.'); }
   btn.disabled=false; btn.textContent='Join '+C.networkShort+' →';
 }
 
@@ -2069,7 +2246,7 @@ async function tryBioLogin(){
     const ok=await verifyBio(saved.userId);
     if(ok){
       try {
-        const rows=await sbS('rf_pastors',{select:'*','id':'eq.'+saved.userId,status:'eq.active'});
+        const rows=await sbS('rf_pastors',{select:PASTOR_COLS,'id':'eq.'+saved.userId,status:'eq.active'});
         if(rows.length){
           ST.session=saved; ST.profile=rows[0];
           audit('LOGIN_SUCCESS',{method:'biometric',role:'pastor',table:'rf_pastors',targetId:saved.userId});
@@ -2084,14 +2261,21 @@ async function tryBioLogin(){
 function showPinLogin(role){
   ST.pinTarget=role; pinBuf='';
   document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
-  const mark=$('pin-mark'),title=$('pin-title'),sub=$('pin-sub');
+  const mark=$('pin-mark'),title=$('pin-title'),sub=$('pin-sub'),emailIn=$('pin-email'),okMsg=$('pin-ok');
   if(mark){
     if(role==='bishop') mark.innerHTML=MITRE;
     else mark.textContent=role==='admin'?'🔧':'🔢';
   }
   if(title) title.textContent=role==='bishop'?'Bishop Access':role==='admin'?'Admin Access':'Pastor Login';
-  if(sub) sub.textContent=role==='bishop'?'Enter your master PIN':role==='admin'?'Enter your admin PIN':'Enter your 6-digit PIN';
-  const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display=(role==='pastor'||role==='admin')?'block':'none';
+  if(sub) sub.textContent=role==='bishop'?'Enter your email + master PIN':role==='admin'?'Enter your admin email + PIN':'Enter your email + 6-digit PIN';
+  // Pre-fill the email field with the last successfully-used email on this device
+  // so returning users only type the PIN.
+  if(emailIn){
+    emailIn.style.display='';
+    emailIn.value = localStorage.getItem(LAST_EMAIL_KEY) || '';
+  }
+  if(okMsg){ okMsg.style.display='none'; okMsg.textContent=''; }
+  const fpl=$('forgot-pin-link'); if(fpl) fpl.style.display='block';
   hideErr('pin-err');
   go('s-pin');
 }
@@ -2400,7 +2584,7 @@ async function loadBishopOverview(){
   const panel=$('bp-overview'); if(!panel) return;
   panel.innerHTML=loading();
   try {
-    const pastors=await sbS('rf_pastors',{select:'*',status:'eq.active',order:'full_name.asc'});
+    const pastors=await sbS('rf_pastors',{select:PASTOR_COLS,status:'eq.active',order:'full_name.asc'});
     ST.allPastors=pastors;
     const scores=pastors.map(p=>burnoutScore(p));
     const atRisk=scores.filter(s=>s>=66).length;
@@ -2443,7 +2627,7 @@ async function loadBishopEngagement(){
   const panel=$('bp-engagement'); if(!panel) return;
   panel.innerHTML=loading();
   try {
-    const pastors=ST.allPastors.length?ST.allPastors:await sbS('rf_pastors',{select:'*',status:'eq.active',order:'full_name.asc'});
+    const pastors=ST.allPastors.length?ST.allPastors:await sbS('rf_pastors',{select:PASTOR_COLS,status:'eq.active',order:'full_name.asc'});
     // Query real data: checkins and posts from the last 8 weeks
     const now=new Date();
     const eightWeeksAgo=new Date(now.getTime()-56*24*60*60*1000).toISOString();
@@ -2885,7 +3069,7 @@ async function bishopDrillPastor(pastorId){
   const panel=$('bp-pastor-detail'); panel.classList.add('active');
   panel.innerHTML=loading();
   try {
-    const rows=await sbS('rf_pastors',{select:'*','id':'eq.'+pastorId});
+    const rows=await sbS('rf_pastors',{select:PASTOR_COLS,'id':'eq.'+pastorId});
     if(!rows.length){panel.innerHTML='<div class="empty">Pastor not found.</div>';return;}
     const p=rows[0];
     const score=burnoutScore(p);
@@ -3214,13 +3398,18 @@ function renderPastor(){
     <div class="auth-mark" id="pin-mark">🔢</div>
     <div class="auth-title" id="pin-title">Enter PIN</div>
     <div class="auth-sub" id="pin-sub">Your 6-digit access code</div>
+    <input class="fin" id="pin-email" type="email" autocomplete="email" placeholder="email@example.com" style="margin-bottom:14px;width:100%;max-width:280px">
     <div class="pin-dots">${'<div class="pin-dot"></div>'.repeat(6)}</div>
     <div class="err" id="pin-err"></div>
+    <div class="ok-msg" id="pin-ok" style="display:none;margin-top:8px"></div>
     <div class="pin-grid">
       ${[1,2,3,4,5,6,7,8,9,'','0','del'].map(k=>k===''?'<div></div>':`<div class="pin-key" onclick="pinPress('${k}')">${k==='del'?'⌫':k}</div>`).join('')}
     </div>
-    <button class="tnav-btn" style="margin-top:10px" onclick="go('s-login')">← Back</button>
-    <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">Locked out? <span style="color:var(--gold);cursor:pointer" onclick="go('s-forgot-pin')">Reset your PIN →</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;width:100%;max-width:280px">
+      <button class="tnav-btn" id="magic-link-btn" onclick="requestMagicLink()">Email me a magic link</button>
+      <button class="tnav-btn" onclick="go('s-login')">← Back</button>
+    </div>
+    <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">Forgot your PIN? <span style="color:var(--gold);cursor:pointer" onclick="requestMagicLink()">Email me a magic link →</span></div>
   </div>
 </div>
 
@@ -3770,7 +3959,7 @@ async function runSearch(q, mode){
 
     // Bishop: also search pastors
     if(mode==='bishop'){
-      const pastors=ST.allPastors.length?ST.allPastors:await sbS('rf_pastors',{select:'*',status:'eq.active'});
+      const pastors=ST.allPastors.length?ST.allPastors:await sbS('rf_pastors',{select:PASTOR_COLS,status:'eq.active'});
       const paMatches=pastors.filter(p=>(p.full_name||'').toLowerCase().includes(ql)||(p.church_name||'').toLowerCase().includes(ql)||(p.city||'').toLowerCase().includes(ql));
       if(paMatches.length) groups.push({title:'Pastors',icon:'👤',items:paMatches.map(p=>({text:p.full_name,meta:[p.church_name,p.city].filter(Boolean).join(' · ')||'—',action:()=>{bishopDrillPastor(p.id);$(mode+'-search').value='';resultsEl.classList.remove('show');}}))});
     }
@@ -4109,6 +4298,19 @@ async function boot(){
   await loadConfig();
   renderPastor();
   applyTheme();
+
+  // Handle magic-link callback BEFORE checking saved sessions. Supabase Auth
+  // redirects to `${origin}/#access_token=...&refresh_token=...&type=magiclink`.
+  // consumeMagicLinkHash parses the hash, looks up the user role, establishes
+  // a session, and clears the hash so a refresh doesn't re-process it.
+  const magic = await consumeMagicLinkHash();
+  if(magic){
+    if(magic.role === 'bishop' || magic.role === 'admin'){
+      launchBishopDashboard(); bishopViewApp(false); initNotifPolling(); return;
+    }
+    go('s-home'); initNotifPolling(); return;
+  }
+
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;

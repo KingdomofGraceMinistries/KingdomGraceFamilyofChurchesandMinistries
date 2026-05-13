@@ -1,0 +1,5 @@
+# Personal/local Claude Code overrides (per-machine, not shared)
+.claude/settings.local.json
+
+# Deno
+deno.lock

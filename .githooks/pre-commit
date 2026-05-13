@@ -1,13 +1,46 @@
 #!/usr/bin/env bash
-# Auto-bump sw.js CACHE_NAME whenever kg-pastoral-network.html is staged.
-# Ensures open PWA tabs pick up new HTML on next update-check.
+# Kingdom Grace pre-commit hook.
+#   1. Scan staged source files through the KGFCM content guard.
+#      (Belt-and-suspenders behind the in-session PreToolUse hook —
+#       catches anything that slipped through outside Claude Code.)
+#   2. Auto-bump sw.js CACHE_NAME whenever kg-pastoral-network.html is staged
+#      so open PWA tabs pick up new HTML on next update-check.
 set -e
 
 staged=$(git diff --cached --name-only)
+[ -z "$staged" ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel)
+SCANNER="$ROOT/.claude/hooks/content-scan.sh"
+
+# ── 1. CONTENT GUARD ──
+if [ -x "$SCANNER" ]; then
+  blocked=0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+      *.ts|*.js|*.html|*.sql)
+        if ! git show ":$f" 2>/dev/null | "$SCANNER" "$ROOT/$f"; then
+          blocked=1
+        fi
+        ;;
+    esac
+  done <<< "$staged"
+  if [ "$blocked" -ne 0 ]; then
+    {
+      echo ""
+      echo "pre-commit: KGFCM content guard blocked commit."
+      echo "Fix the violations above (or amend the offending files) and re-stage."
+    } >&2
+    exit 1
+  fi
+fi
+
+# ── 2. AUTO-BUMP sw.js CACHE_NAME ──
 echo "$staged" | grep -qx "kg-pastoral-network.html" || exit 0
 echo "$staged" | grep -qx "sw.js" && exit 0  # already bumped manually
 
-SW="sw.js"
+SW="$ROOT/sw.js"
 [ -f "$SW" ] || exit 0
 
 current=$(grep -oE "kg-pastoral-v[0-9]+" "$SW" | head -1 | grep -oE "[0-9]+$")

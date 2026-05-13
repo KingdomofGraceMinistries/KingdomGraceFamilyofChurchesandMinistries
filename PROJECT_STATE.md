@@ -1,9 +1,51 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-04-12
-**Status:** Pre-launch — handing over to Bishop Sasser TODAY
+**Last updated:** 2026-05-13
+**Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🚨 SECURITY REMEDIATION TRACKER (opened 2026-05-13)
+
+Prior sessions shipped placeholder security code (`btoa()` as "hash", `Math.random()`
+for reset codes, anon-open RLS, `console.error` in edge functions, `--no-verify-jwt`
+deploys, `Access-Control-Allow-Origin: *`, reset codes echoed back to the browser).
+The user has rejected the "MVP acceptable" framing — this is a production pastoral
+network handling confessional data and every item below is required, not optional.
+
+Hard-block hooks now installed at `.claude/settings.json` to prevent regression
+(see `.claude/hooks/` and `memory/feedback_no_demo_grade_code.md`).
+
+| # | Item | Priority | Status | Notes |
+|---|------|----------|--------|-------|
+| SEC-1 | Replace `btoa(pin)` with real server-side PIN hashing (bcrypt) | CRITICAL | **DONE 2026-05-13** | Migration `20260513170000_real_auth.sql`; pgcrypto bcrypt; `verify_pin` / `hash_pin` SECURITY DEFINER RPCs grantable only to service_role; column-level GRANT keeps `pin_bcrypt` unreadable by authenticated. |
+| SEC-2 | Replace `Math.random()` reset codes + `btoa(...)` invite tokens with CSPRNG | OPEN | Partial | `_shared/rate_limit.ts` ships a `generateCode()` CSPRNG. Legacy `requestPinReset` / `bishopReset*Pin` paths still use Math.random; replaced with magic-link UX in HTML and a future Resend reset-code edge fn under SEC-4. |
+| SEC-3 | Tighten RLS — remove `anon using(true)/with check(true)`, require JWT | CRITICAL | **DONE 2026-05-13** | All old `using(true)` anon policies dropped. New policies key on `auth.uid()` and `is_bishop()` (JWT app_metadata.role). Column-level GRANT excludes pin_bcrypt + reset_token_hash. Post-migration assertion: zero open anon writes remain. |
+| SEC-4 | Email/SMS delivery for reset codes — stop echoing to browser | OPEN | Magic-link added as interim self-service reset; Resend-based reset-code edge function is the next milestone. |
+| SEC-5 | JWT-verify all edge functions, lock CORS to production origin | OPEN | New login/register fns deployed `verify_jwt: false` (PIN flow has no JWT) but rate-limit + audit + (cutover) CORS lock. Old fns (ai-proxy, push-send, push-notify, checkin-remind) still `--no-verify-jwt` + `*` CORS — to be redone in SEC-5 proper. Set `ALLOWED_ORIGINS` env var on the new fns to tighten beyond cutover. |
+| SEC-6 | Server-side audit logger via service-role edge function | OPEN | Server-side `audit()` shipped in `_shared/audit.ts`; new fns use it. 5 console.error calls in legacy fns still pending. |
+| SEC-7 | Add CSP header in vercel.json | OPEN | — |
+| SEC-8 | Remove redundant long-lived anon JWT from HTML | OPEN | — |
+| SEC-9 | Migrate `image_data` base64 columns to storage bucket | OPEN | — |
+| SEC-10 | Idempotency keys on offline-queue mutations | OPEN | — |
+| SEC-11 | Wire `.githooks/pre-commit` — set `core.hooksPath` (USER ACTION) | OPEN | Run `git config core.hooksPath .githooks` once. |
+| SEC-12 | Reload Claude hooks via `/hooks` (USER ACTION) | DONE | Hooks already firing this session (caught a CORS-wildcard false positive and a SQL-anon false positive — both refined). |
+| SEC-13 | rf_push_subscriptions ALL policy wide-open to `public` | **DONE 2026-05-13** | Replaced with self-only CRUD keyed on `user_id = auth.uid()::text`. Bishop can read all via `is_bishop()`. |
+| SEC-14 | reset_weekly_post_counts SECURITY DEFINER + anon-executable + mutable search_path | **DONE 2026-05-13** | EXECUTE revoked from anon/authenticated/public; search_path pinned to `public, pg_temp`. |
+| SEC-15 | Public bucket SELECT-list policies | **DONE 2026-05-13** | `wins_public_read`, `voice_public_read`, `public_read_avatars`, `public_read_announcements` dropped. Direct URL fetch still works; bucket enumeration does not. |
+| SEC-16 | Capture orphan MCP-applied migrations as files | OPEN | Live DB has 11 migration entries; local repo has 5. `add_pin_reset_token`, `create_admins_table`, `create_audit_log_table`, `create_network_config_with_bishop_pin`, `admin_email_and_reset_token`, etc. need to be reconstructed as `YYYYMMDDHHMMSS_name.sql` files. |
+
+### Phase 1 — what shipped on 2026-05-13
+
+- Migration `20260513170000_real_auth.sql` applied (live).
+- Edge functions deployed: `kgfcm-pin-login` (v2), `kgfcm-pin-register` (v1).
+- HTML cutover: `SB_HDR` uses session JWT; `submitPin`/`registerPastor` now call edge functions; `select:'*'` on rf_pastors replaced with `select:PASTOR_COLS` (excludes pin_bcrypt + reset_token_hash); top-level `window.error` + `unhandledrejection` boundary; magic-link login + magic-link callback handler on app boot; `LAST_EMAIL_KEY` remembered per-device.
+- Bishop bootstrap: `bishop_email = 'BishopSasser2015@gmail.com'`, bcrypt PIN preserved (`101010`), `rf_admins` profile row created on first verified login. End-to-end smoke test via curl returned a valid bishop JWT.
+- Auth boundary now requires email + PIN (or magic link). The bishop's "Bishop Access" entry shows the same screen as pastor/admin — email pre-filled from `localStorage[LAST_EMAIL_KEY]`.
+
+In-session TaskList mirrors this table.
 
 ---
 
@@ -183,7 +225,7 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | XSS fix — `esc()` HTML escaper | DONE | Fixed 30+ innerHTML calls |
 | 3 stub functions implemented | DONE | encouragePrayer, bishopPrayFor, bishopCelebrate |
 | Error feedback on silent catch blocks | DONE | 11+ catch blocks now show toast |
-| Removed console.log from production | DONE | Clean production output |
+| Removed console.log from production | PARTIAL — REVERTED CLAIM | Client-side console.log removed, but 5 `console.error` calls remain in edge functions (kgfcm-ai-proxy, push-send, push-notify, checkin-remind). Tracked as SEC-6. |
 | **Notification System** | | |
 | In-app toast notifications + badge counts | DONE | Visual notification system |
 | Notification sound (Web Audio API chime) | DONE | Audio feedback |
@@ -206,7 +248,7 @@ A mobile-first PWA for pastoral oversight. Two interfaces:
 | Login help dropdown | DONE | Explains all three roles |
 | **White Label** | | |
 | Branding in Supabase rf_network_config | DONE | All branding from database |
-| Bishop PIN in Supabase (hashed) | DONE | Removed from client code |
+| Bishop PIN in Supabase ("hashed") | MISLEADING CLAIM — REVERTED | Bishop PIN is stored as `btoa(pin)` (base64, reversible), NOT hashed. Anyone with the anon key can dump rf_network_config.bishop_pin_hash and decode it. Tracked as SEC-1. |
 | Dynamic manifest generation | DONE | From config table |
 | Zero hardcoded names/locations | DONE | Fully white-label |
 | **Documentation & Mobile** | | |
@@ -304,7 +346,10 @@ npx supabase functions deploy kgfcm-checkin-remind --no-verify-jwt
 
 ---
 
-## Known Limitations (MVP acceptable)
+## Known Limitations — UNDER REMEDIATION
 
-- Avatar images stored as base64 in database — works under 4MB, move to CDN later
-- No data export/backup UI — use Supabase dashboard directly
+(Previously labeled "MVP acceptable." That framing has been rejected. Each item below
+is now tracked in the SECURITY REMEDIATION TRACKER above as work that must be done.)
+
+- Avatar / image data stored as base64 in DB rows — see SEC-9.
+- No data export/backup UI — pending; not security-blocking.
