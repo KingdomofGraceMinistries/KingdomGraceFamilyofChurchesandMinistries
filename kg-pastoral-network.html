@@ -986,7 +986,7 @@ function backFabClick(){
   }
 }
 function go(id,skipPush){
-  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach','s-pastor-view','s-fasts','s-events'];
+  const guarded=['s-home','s-team','s-prayer','s-wins','s-profile','s-checkin','s-dm','s-ann','s-bishop-profile','s-apostle-ericka','s-outreach','s-pastor-view','s-fasts','s-events','s-devotion'];
   if(guarded.includes(id) && !ST.session){ go('s-login'); return; }
   const prev=document.querySelector('#app .screen.active');
   if(prev&&prev.id===id) return;
@@ -1032,6 +1032,7 @@ function onScreen(id){
   else if(id==='s-pastor-view') loadPastorView(ST.viewPastorId);
   else if(id==='s-fasts') loadFasts();
   else if(id==='s-events') loadEvents();
+  else if(id==='s-devotion') loadDevotion();
   else if(id==='s-settings') renderThemeOptions();
 }
 
@@ -1128,8 +1129,75 @@ async function loadHome(){
       } else blastsEl.innerHTML='';
     } catch(e){ blastsEl.innerHTML=''; }
   }
+  renderHomeDevotion();
   renderHomeActiveFast();
   renderHomeUpcomingEvents();
+}
+
+// ── Home: today's devotion teaser card ──
+async function renderHomeDevotion(){
+  const el=$('home-devotion'); if(!el) return;
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const rows=await sbS('rf_devotions',{select:'date,theme,title,scripture_ref,scripture_text,audio_url,video_url,status', date:'eq.'+today});
+    const d = rows && rows[0];
+    if(!d || (d.status !== 'published' && !canManageDevotions())){ el.innerHTML=''; return; }
+    el.innerHTML=`<div style="margin-top:16px">
+      <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px solid var(--gold);padding:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:18px">📖</span>
+          <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.2px;font-weight:500">Today's Word · ${esc(d.theme||'')}</div>
+          ${(d.audio_url||d.video_url)?'<span class="pill pill-gold" style="margin-left:auto">🎙 Bishop</span>':''}
+        </div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost);line-height:1.3;margin-bottom:4px">${esc(d.title||'')}</div>
+        <div style="font-size:11px;color:var(--gold);font-style:italic">${esc(d.scripture_ref||'')}</div>
+        <div style="font-size:12px;color:var(--mist);margin-top:8px">Tap to read →</div>
+      </div>
+    </div>`;
+  } catch(e){ el.innerHTML=''; }
+}
+
+// Returns true for bishop or admin — both can view drafts. The existing
+// isBishop() at line ~2584 is bishop-only and shouldn't be redefined here.
+function canManageDevotions(){ return ST.session?.role === 'bishop' || ST.session?.role === 'admin'; }
+
+// ── Full devotion screen ──
+async function loadDevotion(){
+  const body=$('devotion-body'); if(!body) return;
+  body.innerHTML=loading();
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const rows=await sbS('rf_devotions',{select:'*', date:'eq.'+today});
+    const d = rows && rows[0];
+    if(!d){ body.innerHTML='<div class="empty">No devotion for today yet. Check back soon.</div>'; return; }
+    if(d.status !== 'published' && !canManageDevotions()){
+      body.innerHTML='<div class="empty">Today\'s devotion is still being finalized. Check back in a moment.</div>';
+      return;
+    }
+    body.innerHTML=`
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px">${esc(d.theme||'Today\'s Word')}</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:var(--frost);line-height:1.2">${esc(d.title||'')}</div>
+        ${d.status==='draft'?'<div class="pill pill-gold" style="margin-top:8px">DRAFT · awaiting bishop approval</div>':''}
+      </div>
+      ${d.video_url?`<video controls preload="metadata" src="${esc(d.video_url)}" style="width:100%;border-radius:var(--rm);margin-bottom:14px;background:#000"></video>`:''}
+      ${d.audio_url?`<audio controls preload="metadata" src="${esc(d.audio_url)}" style="width:100%;margin-bottom:14px"></audio>`:''}
+      <div class="card" style="border-left:2px solid var(--gold);margin-bottom:14px;font-style:italic;color:var(--frost);line-height:1.6">
+        <div style="font-size:14px;white-space:pre-wrap">${esc(d.scripture_text||'')}</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:8px;text-align:right">— ${esc(d.scripture_ref||'')} (NKJV)</div>
+      </div>
+      ${d.body?`<div style="font-size:14px;color:var(--frost);line-height:1.75;white-space:pre-wrap;margin-bottom:18px">${esc(d.body)}</div>`:''}
+      ${d.prophetic_call?`<div class="card" style="background:var(--gold4);border:0.5px solid var(--gold);margin-bottom:14px">
+        <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px">🔥 Stir Up The Gift</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.6;white-space:pre-wrap">${esc(d.prophetic_call)}</div>
+      </div>`:''}
+      ${d.reflection_prompt?`<div class="card" style="border-left:2px solid var(--sage);margin-bottom:14px">
+        <div style="font-size:10px;color:var(--sage);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px">Sit With This Today</div>
+        <div style="font-size:13px;color:var(--frost);line-height:1.6;white-space:pre-wrap">${esc(d.reflection_prompt)}</div>
+      </div>`:''}
+      ${d.source==='bishop'?'<div style="text-align:center;font-size:11px;color:var(--ash);margin-top:18px">— From the heart of '+esc(C.bishopName||'the Bishop')+'</div>':''}
+    `;
+  } catch(e){ body.innerHTML='<div class="empty">Could not load today\'s devotion.</div>'; }
 }
 
 function replyToBishop(){ go('s-dm'); }
@@ -2536,6 +2604,7 @@ function renderBishopDashboard(){
       ${showPrayer?'<button class="b-tab" onclick="switchBishopPanel(\'prayer\')">Prayer Wall</button>':''}
       <button class="b-tab" onclick="switchBishopPanel('wins')">Wins Wall</button>
       <button class="b-tab" onclick="switchBishopPanel('team')">Team</button>
+      <button class="b-tab" onclick="switchBishopPanel('devotion')">Devotion</button>
       <button class="b-tab" onclick="switchBishopPanel('announcements')">Announcements</button>
       <button class="b-tab" onclick="switchBishopPanel('messages')">Messages</button>
       <button class="b-tab" onclick="switchBishopPanel('invites')">Invites</button>
@@ -2559,6 +2628,7 @@ function renderBishopDashboard(){
     <div id="bp-prayer" class="b-panel"></div>
     <div id="bp-wins" class="b-panel"></div>
     <div id="bp-team" class="b-panel"></div>
+    <div id="bp-devotion" class="b-panel"></div>
     <div id="bp-announcements" class="b-panel"></div>
     <div id="bp-messages" class="b-panel"></div>
     <div id="bp-invites" class="b-panel"></div>
@@ -2593,11 +2663,133 @@ function switchBishopPanel(panel,skipPush){
   else if(panel==='team') loadBishopTeam();
   else if(panel==='announcements') loadBishopAnnouncements();
   else if(panel==='messages') loadBishopMessages();
+  else if(panel==='devotion') loadBishopDevotion();
   else if(panel==='invites') loadBishopInvites();
   else if(panel==='manage-admins') loadManageAdmins();
   else if(panel==='bishop-profile') loadBishopProfile();
   else if(panel==='apostle-ericka') loadApostleEraka();
   else if(panel==='help') loadHelp();
+}
+
+// ── BISHOP: Daily Devotion ───────────────────────────────────
+async function loadBishopDevotion(){
+  const panel=$('bp-devotion'); if(!panel) return;
+  panel.innerHTML=loading();
+  const today=new Date().toISOString().slice(0,10);
+  try {
+    const rows=await sbS('rf_devotions',{select:'*', date:'eq.'+today});
+    const d = rows && rows[0];
+    const recent = await sbS('rf_devotions',{select:'date,theme,title,status,source', order:'date.desc', limit:'10'}).catch(()=>[]);
+    panel.innerHTML=`
+      <div style="max-width:720px;margin:0 auto">
+        <div class="b-drill" style="margin-bottom:18px">
+          <div class="b-drill-name">Today's Devotion · ${today}</div>
+          <div class="b-drill-church">One devotion goes network-wide per day. AI drafts; you approve, edit, replace, or publish.</div>
+        </div>
+        <div id="dev-current">${d ? renderBishopDevotionCard(d) : `
+          <div class="empty" style="padding:30px 20px">
+            No devotion drafted for today yet.
+            <div style="margin-top:14px"><button class="fsub" onclick="generateTodayDevotion()">✨ Generate today's draft</button></div>
+          </div>`}
+        </div>
+        <div style="margin-top:24px">
+          <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Recent devotions</div>
+          ${recent.length ? recent.map(r=>`<div class="pw-item" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="font-size:11px;color:var(--ash);min-width:80px">${esc(r.date)}</div>
+            <div style="flex:1;min-width:140px">
+              <div style="font-size:13px;color:var(--frost)">${esc(r.title||'(untitled)')}</div>
+              <div style="font-size:11px;color:var(--mist)">${esc(r.theme||'')} · ${esc(r.source)}</div>
+            </div>
+            <span class="pill ${r.status==='published'?'pill-green':r.status==='draft'?'pill-gold':'pill-mist'}">${esc(r.status)}</span>
+          </div>`).join('') : '<div class="empty">No devotions yet.</div>'}
+        </div>
+      </div>`;
+  } catch(e){ panel.innerHTML='<div class="empty">Could not load devotions.</div>'; }
+}
+
+function renderBishopDevotionCard(d){
+  const isPublished = d.status === 'published';
+  const isBishopWritten = d.source === 'bishop';
+  return `<div class="card" style="border-left:2px solid var(--gold)">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span class="pill ${isPublished?'pill-green':'pill-gold'}">${esc(d.status)}</span>
+      <span class="pill ${isBishopWritten?'pill-gold':'pill-mist'}">${isBishopWritten?'BISHOP':'AI'}</span>
+      <div style="font-size:11px;color:var(--ash);margin-left:auto">${esc(d.theme||'')}</div>
+    </div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:var(--frost);line-height:1.25;margin-bottom:6px">${esc(d.title||'(untitled)')}</div>
+    <div style="font-size:12px;color:var(--gold);font-style:italic;margin-bottom:10px">${esc(d.scripture_ref||'')} (NKJV)</div>
+    ${d.video_url?`<video controls preload="metadata" src="${esc(d.video_url)}" style="width:100%;border-radius:var(--rs);margin-bottom:10px;background:#000;max-height:280px"></video>`:''}
+    ${d.audio_url?`<audio controls preload="metadata" src="${esc(d.audio_url)}" style="width:100%;margin-bottom:10px"></audio>`:''}
+    <div style="font-size:13px;color:var(--frost);line-height:1.65;white-space:pre-wrap;background:var(--ink3);padding:12px;border-radius:var(--rs);max-height:320px;overflow-y:auto">${esc(d.body||'')}</div>
+    ${d.prophetic_call?`<div style="margin-top:10px;padding:10px;background:var(--gold4);border:0.5px solid var(--gold);border-radius:var(--rs)"><div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.3px;margin-bottom:4px">Prophetic call</div><div style="font-size:12px;color:var(--frost);white-space:pre-wrap">${esc(d.prophetic_call)}</div></div>`:''}
+    ${d.reflection_prompt?`<div style="margin-top:10px;padding:10px;background:var(--ink3);border-left:2px solid var(--sage);border-radius:var(--rs)"><div style="font-size:10px;color:var(--sage);text-transform:uppercase;letter-spacing:1.3px;margin-bottom:4px">Reflection prompt</div><div style="font-size:12px;color:var(--frost);white-space:pre-wrap">${esc(d.reflection_prompt)}</div></div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      ${!isPublished?`<button class="fsub" style="padding:9px 14px;font-size:12px" onclick="publishDevotion('${d.id}')">✓ Publish to network</button>`:''}
+      <button class="pw-act" onclick="generateTodayDevotion()">↻ Regenerate AI draft</button>
+      <label class="pw-act" style="cursor:pointer">🎙 Add voice
+        <input type="file" accept="audio/*" style="display:none" onchange="uploadDevotionMedia('${d.id}','audio',this.files[0])">
+      </label>
+      <label class="pw-act" style="cursor:pointer">🎬 Add video
+        <input type="file" accept="video/*" style="display:none" onchange="uploadDevotionMedia('${d.id}','video',this.files[0])">
+      </label>
+      <button class="pw-act danger" onclick="archiveDevotion('${d.id}')">Archive</button>
+    </div>
+    <div class="err" id="dev-err" style="margin-top:8px"></div>
+    <div class="ok-msg" id="dev-ok" style="margin-top:8px;display:none"></div>
+  </div>`;
+}
+
+async function generateTodayDevotion(){
+  const cur=$('dev-current'); if(cur) cur.innerHTML=loading();
+  try {
+    const r=await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-devotion-generate`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey':SB_API_KEY(),
+        'Authorization':'Bearer '+ST.session.access_token,
+      },
+      body: JSON.stringify({}),
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error||'Could not generate.');
+    audit('DEVOTION_GENERATED',{table:'rf_devotions', targetId:data.draft?.id});
+    loadBishopDevotion();
+  } catch(e){
+    const cur2=$('dev-current'); if(cur2) cur2.innerHTML=`<div class="empty">${esc(e.message||'Could not generate today\'s devotion.')}<div style="margin-top:14px"><button class="fsub" onclick="loadBishopDevotion()">Reload</button></div></div>`;
+  }
+}
+
+async function publishDevotion(id){
+  try {
+    await sbU('rf_devotions','id=eq.'+id,{status:'published', published_at:new Date().toISOString(), reviewed_by: ST.session?.userId || null});
+    audit('DEVOTION_PUBLISHED',{table:'rf_devotions', targetId:id});
+    loadBishopDevotion();
+  } catch(e){ alert('Could not publish: '+(e.message||'unknown')); }
+}
+
+async function archiveDevotion(id){
+  if(!confirm('Archive this devotion? Pastors won\'t see it.')) return;
+  try {
+    await sbU('rf_devotions','id=eq.'+id,{status:'archived'});
+    audit('DEVOTION_ARCHIVED',{table:'rf_devotions', targetId:id});
+    loadBishopDevotion();
+  } catch(e){ alert('Could not archive.'); }
+}
+
+async function uploadDevotionMedia(id, kind, file){
+  if(!file) return;
+  // 50MB cap on uploads from the bishop dashboard.
+  if(file.size > 50*1024*1024){ alert('File must be under 50MB.'); return; }
+  try {
+    const ext = (file.name.split('.').pop() || (kind==='video'?'mp4':'webm')).toLowerCase();
+    const path = `devotions/${id}-${kind}-${Date.now()}.${ext}`;
+    const url = await storageUpload('voice', path, file);
+    const patch = kind==='video' ? {video_url:url, source:'bishop'} : {audio_url:url, source:'bishop'};
+    await sbU('rf_devotions','id=eq.'+id, patch);
+    audit('DEVOTION_MEDIA_ATTACHED',{table:'rf_devotions', targetId:id, kind});
+    loadBishopDevotion();
+  } catch(e){ alert('Upload failed: '+(e.message||'unknown')); }
 }
 
 async function loadBishopOverview(){
@@ -3531,6 +3723,7 @@ function renderPastor(){
         <div class="stat-box" onclick="comingSoon('Giving')"><div class="stat-num">💝</div><div class="stat-lbl">Giving</div></div>
         <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)"><div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div></div>
       </div>
+      <div id="home-devotion"></div>
       <div id="home-active-fast"></div>
       <div id="home-upcoming-events"></div>
       <div id="home-leadership" style="margin-bottom:16px">
@@ -3675,6 +3868,24 @@ function renderPastor(){
   </div>
   <div class="scroll">
     <div id="fasts-body" style="padding-top:14px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
+  </div>
+</div>
+
+<!-- DAILY DEVOTION -->
+<div id="s-devotion" class="screen">
+  <div class="tnav">
+    <div class="tnav-logo"><div class="tnav-mark">📖</div><div><div class="tnav-title">Today's Word</div><div class="tnav-sub">Daily devotion</div></div></div>
+    <button class="tnav-btn" onclick="go('s-home')">← Home</button>
+  </div>
+  <div class="scroll">
+    <div id="devotion-body" style="padding:18px 16px 40px;max-width:560px;margin:0 auto"></div>
   </div>
   <div class="bnav">
     <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
