@@ -2193,62 +2193,62 @@ async function registerPastor(){
 }
 
 async function requestPinReset(){
-  const email=$('reset-email')?.value.trim();
+  const email=($('reset-email')?.value || '').trim().toLowerCase();
   if(!email){showErr('reset-err','Please enter your email.');return;}
   const btn=$('reset-req-btn'); btn.disabled=true; btn.textContent='Checking...';
   try {
-    let table='rf_pastors', row=null;
-    const pastors=await sbS('rf_pastors',{select:'id,email',email:'eq.'+email,status:'eq.active'});
-    if(pastors.length){ row=pastors[0]; }
-    else {
-      const admins=await sbS('rf_admins',{select:'id,email',email:'eq.'+email,status:'eq.active'});
-      if(admins.length){ row=admins[0]; table='rf_admins'; }
-    }
-    if(!row){showErr('reset-err','No active account found with that email.');btn.disabled=false;btn.textContent='Send reset code →';return;}
-    const code=Math.random().toString(36).slice(2,8).toUpperCase();
-    const expires=new Date(Date.now()+30*60*1000).toISOString();
-    await sbU(table,'id=eq.'+row.id,{reset_token:code,reset_token_expires:expires});
-    audit('PIN_RESET_REQUESTED',{table,targetId:row.id,email});
+    // kgfcm-pin-reset: rate-limited, constant-time, sends an 8-char code via
+    // Resend to the email-on-file. Always returns {sent:true} regardless of
+    // whether the email is registered (enumeration defense).
+    await callEdgeFn('kgfcm-pin-reset', { email });
+    audit('PIN_RESET_REQUESTED', {});
     hideErr('reset-err');
-    showOk('reset-ok','Reset code: '+code+'\n\nIn production this would be emailed. For now, share it with your Bishop or note it down. Code expires in 30 minutes.');
+    showOk('reset-ok', `If that email is on file, a reset code has been sent. Check your inbox — the code expires in 30 minutes.`);
     const sec=$('reset-token-section'); if(sec) sec.style.display='block';
-  } catch(e){showErr('reset-err','Could not process reset request.');}
+  } catch(e){ showErr('reset-err','Could not process reset request. Please try again.'); }
   btn.disabled=false; btn.textContent='Send reset code →';
 }
 
 async function confirmPinReset(){
-  const email=$('reset-email')?.value.trim();
-  const code=$('reset-code')?.value.trim();
-  const newPin=$('reset-new-pin')?.value.trim();
-  if(!code){showErr('reset-err','Enter the reset code.');return;}
-  if(!newPin||newPin.length<6){showErr('reset-err','PIN must be 6 digits.');return;}
+  const email=($('reset-email')?.value || '').trim().toLowerCase();
+  const code=($('reset-code')?.value || '').trim().toLowerCase();
+  const newPin=($('reset-new-pin')?.value || '').trim();
+  if(!code || !/^[0-9a-f]{8}$/i.test(code)){showErr('reset-err','Enter the 8-character reset code from your email.');return;}
+  if(!newPin || !/^\d{6}$/.test(newPin)){showErr('reset-err','New PIN must be exactly 6 digits.');return;}
   try {
-    let table='rf_pastors', row=null;
-    const pastors=await sbS('rf_pastors',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
-    if(pastors.length){ row=pastors[0]; }
-    else {
-      const admins=await sbS('rf_admins',{select:'id,reset_token,reset_token_expires',email:'eq.'+email,status:'eq.active'});
-      if(admins.length){ row=admins[0]; table='rf_admins'; }
-    }
-    if(!row){showErr('reset-err','Account not found.');return;}
-    if(!row.reset_token||row.reset_token!==code){showErr('reset-err','Invalid reset code.');return;}
-    if(new Date(row.reset_token_expires)<new Date()){showErr('reset-err','Reset code has expired. Request a new one.');return;}
-    await sbU(table,'id=eq.'+row.id,{pin_hash:btoa(newPin),reset_token:null,reset_token_expires:null});
-    audit('PIN_RESET_COMPLETE',{table,targetId:row.id});
+    // kgfcm-pin-reset-confirm: verifies hash, bcrypts the new PIN server-side,
+    // clears the reset hash, and (when possible) issues a session so the user
+    // is auto-logged-in.
+    const session = await callEdgeFn('kgfcm-pin-reset-confirm', { email, code, new_pin: newPin });
     hideErr('reset-err');
-    showOk('reset-ok','PIN updated! You can now sign in.');
-    setTimeout(()=>go('s-login'),2000);
-  } catch(e){showErr('reset-err','Could not reset PIN.');}
+    if(session.access_token){
+      applySession(session);
+      showOk('reset-ok','PIN updated. Signing you in…');
+      setTimeout(()=>{
+        if(session.role === 'bishop' || session.role === 'admin'){
+          launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
+        } else {
+          go('s-home'); initNotifPolling();
+        }
+      }, 1200);
+    } else {
+      showOk('reset-ok','PIN updated. Sign in with your new PIN.');
+      setTimeout(()=>go('s-login'), 1500);
+    }
+  } catch(e){ showErr('reset-err', e.message || 'Invalid or expired reset code.'); }
 }
 
 async function bishopResetPastorPin(pastorId){
-  const code=Math.random().toString(36).slice(2,8).toUpperCase();
-  const expires=new Date(Date.now()+60*60*1000).toISOString(); // 1 hour
+  // Look up the pastor's email and trigger the same Resend-backed reset flow
+  // a pastor would self-serve. Bishop never sees the code.
   try {
-    await sbU('rf_pastors','id=eq.'+pastorId,{reset_token:code,reset_token_expires:expires});
-    audit('BISHOP_PIN_RESET',{table:'rf_pastors',targetId:pastorId});
-    window.prompt('Share this PIN reset code with the pastor. It expires in 1 hour:',code);
-  } catch(e){ alert('Could not generate reset code.'); }
+    const rows = await sbS('rf_pastors',{select:'email,full_name', id:'eq.'+pastorId});
+    const email = rows && rows[0] && rows[0].email;
+    if(!email){ alert('Pastor has no email on file. Add one to their profile first.'); return; }
+    await callEdgeFn('kgfcm-pin-reset', { email });
+    audit('BISHOP_PIN_RESET_SENT',{table:'rf_pastors', targetId:pastorId});
+    alert(`Reset email sent to ${email}. The pastor will receive an 8-character code that expires in 30 minutes.`);
+  } catch(e){ alert('Could not send reset email.'); }
 }
 
 async function tryBioLogin(){
@@ -3038,7 +3038,10 @@ async function sendBishopInvite(){
   if(!name){showErr('inv-err','Please enter the pastor\'s name.');return;}
   const btn=$('inv-btn'); btn.disabled=true; btn.textContent='Creating...';
   try {
-    const token=btoa(name+':'+Date.now());
+    // SEC-2: CSPRNG-based invite token. crypto.randomUUID() yields 122 bits of
+    // entropy — far stronger than the legacy btoa(name+timestamp) which leaked
+    // both the invitee's name and creation time once base64-decoded.
+    const token=crypto.randomUUID();
     await sbI('rf_invites',{email:'',invited_name:name,token,accepted_at:null});
     audit('BISHOP_INVITE_SENT',{table:'rf_invites',invited_name:name});
     // Build invite link
@@ -3272,19 +3275,29 @@ async function loadManageAdmins(){
 
 async function addAdmin(){
   const name=$('admin-name')?.value.trim();
-  const email=$('admin-email')?.value.trim().toLowerCase();
-  const pin=$('admin-pin')?.value.trim();
+  const email=($('admin-email')?.value || '').trim().toLowerCase();
+  const pin=($('admin-pin')?.value || '').trim();
   if(!name){showErr('admin-err','Please enter the admin\'s name.');return;}
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){showErr('admin-err','Please enter a valid email.');return;}
-  if(!pin||pin.length<6){showErr('admin-err','PIN must be 6 digits.');return;}
+  if(!pin || !/^\d{6}$/.test(pin)){showErr('admin-err','PIN must be exactly 6 digits.');return;}
   try {
-    await sbI('rf_admins',{full_name:name,email,pin_hash:btoa(pin),status:'active'});
+    // create_admin() is a SECURITY DEFINER SQL RPC that checks is_bishop(),
+    // bcrypt-hashes the PIN, and inserts the row. The plaintext PIN never
+    // crosses the column GRANT layer; the bishop's JWT authorizes the call.
+    const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/create_admin`,{
+      method:'POST', headers:SB_HDR(),
+      body:JSON.stringify({p_email:email, p_name:name, p_pin:pin}),
+    });
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err.message || 'Could not add admin.');
+    }
     audit('ADMIN_ADDED',{table:'rf_admins',admin_name:name,email});
     $('admin-name').value=''; $('admin-email').value=''; $('admin-pin').value='';
     hideErr('admin-err');
-    showOk('admin-ok',name+' has been added as an admin. Share their PIN with them: '+pin);
+    showOk('admin-ok', name+' has been added as an admin. Share their starting PIN with them privately — they can change it after first login.');
     loadManageAdmins();
-  } catch(e){showErr('admin-err','Could not add admin. Email may already be in use.');}
+  } catch(e){ showErr('admin-err', e.message || 'Could not add admin.'); }
 }
 
 async function lockAdmin(id,btn){
@@ -3305,13 +3318,15 @@ async function unlockAdmin(id,btn){
 }
 
 async function bishopResetAdminPin(adminId){
-  const code=Math.random().toString(36).slice(2,8).toUpperCase();
-  const expires=new Date(Date.now()+60*60*1000).toISOString();
+  // Same Resend-backed reset flow as for pastors — bishop only triggers it.
   try {
-    await sbU('rf_admins','id=eq.'+adminId,{reset_token:code,reset_token_expires:expires});
-    audit('BISHOP_ADMIN_PIN_RESET',{table:'rf_admins',targetId:adminId});
-    window.prompt('Share this PIN reset code with the admin. It expires in 1 hour. They can use it on the "Reset your PIN" screen:',code);
-  } catch(e){ alert('Could not generate reset code.'); }
+    const rows = await sbS('rf_admins',{select:'email,full_name', id:'eq.'+adminId});
+    const email = rows && rows[0] && rows[0].email;
+    if(!email){ alert('Admin has no email on file.'); return; }
+    await callEdgeFn('kgfcm-pin-reset', { email });
+    audit('BISHOP_ADMIN_PIN_RESET_SENT',{table:'rf_admins', targetId:adminId});
+    alert(`Reset email sent to ${email}. The admin will receive an 8-character code that expires in 30 minutes.`);
+  } catch(e){ alert('Could not send reset email.'); }
 }
 
 async function removeAdmin(id,btn){
