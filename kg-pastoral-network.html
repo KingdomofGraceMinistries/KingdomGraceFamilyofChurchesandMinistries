@@ -365,9 +365,13 @@ details[open] summary{border-bottom:0.5px solid var(--br);}
 const C = {
   // ── Connection (required to reach Supabase) ──
   supabaseUrl:   "https://kseocbwhuveieqhayske.supabase.co",
+  // SEC-8: publishable key only. The legacy long-lived anon JWT (exp 2036)
+  // was removed — both the publishable key and that JWT pointed at the same
+  // anon role, so the JWT was redundant attack surface. Anyone holding the
+  // publishable key gets the same access (which is now correctly bounded by
+  // the RLS policies installed in migration 20260513170000_real_auth).
   supabasePublishableKey: "sb_publishable_NYSIUwcIft1MvYcDcn8T2g_gD7_L5uz",
-  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzZW9jYndodXZlaWVxaGF5c2tlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NzM4NTUsImV4cCI6MjA5MTI0OTg1NX0.5QQ0wWJsq8rhSJLq4JywRGEs9A1umxkA3PeLf72k6V0",
-  get supabaseKey() { return this.supabasePublishableKey || this.supabaseAnonKey; },
+  get supabaseKey() { return this.supabasePublishableKey; },
   // ── Populated from Supabase at boot ──
   networkName:   '',
   networkShort:  '',
@@ -602,9 +606,14 @@ const FN_PIN_REGISTER = 'kgfcm-pin-register';
 // Per-device remembered email for faster re-login (never the PIN).
 const LAST_EMAIL_KEY = 'kgfcm_last_email';
 
-const SB_API_KEY     = () => C.supabasePublishableKey || C.supabaseAnonKey;
+const SB_API_KEY     = () => C.supabasePublishableKey;
 const SB_AUTH_TOKEN  = () => ST.session?.access_token || SB_API_KEY();
-const SB_HDR     = () => ({'Content-Type':'application/json','apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Prefer':'return=representation'});
+// SEC-10: Every mutation gets a fresh Idempotency-Key. If the network drops
+// between server-side commit and client receipt of the response, sw.js
+// queues the request for replay; the SW carries the same key forward and
+// skips replays for keys it has already seen succeed.
+function newIdempotencyKey(){ return crypto.randomUUID(); }
+const SB_HDR     = () => ({'Content-Type':'application/json','apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Prefer':'return=representation','Idempotency-Key':newIdempotencyKey()});
 const SB_GET_HDR = () => ({'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN()});
 
 // Refresh the access_token using the refresh_token. Returns true on success.
@@ -1241,7 +1250,7 @@ async function loadWins(){
         <span style="margin-left:auto;font-size:20px">🏆</span>
       </div>
       ${r.win_text?`<div class="pw-body">${esc(r.win_text)}</div>`:''}
-      ${r.image_data?`<img src="${esc(r.image_data)}" style="width:100%;max-height:320px;object-fit:cover;border-radius:var(--rm);margin-top:8px" alt="Win photo">`:''}
+      ${r.image_url?`<img src="${esc(r.image_url)}" style="width:100%;max-height:320px;object-fit:cover;border-radius:var(--rm);margin-top:8px" alt="Win photo">`:''}
       <div class="pw-actions" style="flex-wrap:wrap">
         <button class="pw-act" onclick="reactWin('${r.id}','fire',this)">🔥 ${r.fire_count||0}</button>
         <button class="pw-act" onclick="reactWin('${r.id}','glory',this)">✝️ ${r.glory_count||0}</button>
@@ -2055,7 +2064,7 @@ async function submitWin(){
       const path=`${ST.session.userId}/${Date.now()}.${ext}`;
       imageUrl=await storageUpload('wins',path,winPhotoFile);
     }
-    await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text||'',fire_count:0,glory_count:0,image_data:imageUrl||null});
+    await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text||'',fire_count:0,glory_count:0,image_url:imageUrl||null});
     audit('WIN_POSTED',{table:'rf_wins',hasImage:!!imageUrl});
     firePushNotify('win',{pastor_id:ST.session.userId,pastor_name:ST.session.name});
     ta.value=''; clearWinPhoto(); hideErr('win-err'); loadWins();
@@ -2337,7 +2346,7 @@ async function submitAnnouncement(){
       pastor_id:ST.session.userId,
       title:$('ann-title')?.value.trim()||'',
       body:text||'',
-      image_data:imageUrl||null,
+      image_url:imageUrl||null,
       is_pinned:false,
       status:'active'
     });
@@ -2376,7 +2385,7 @@ function annCard(r, role){
     </div>
     ${r.title?`<div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);margin-bottom:6px">${esc(r.title)}</div>`:''}
     ${r.body?`<div class="pw-body">${esc(r.body)}</div>`:''}
-    ${r.image_data?`<img src="${esc(r.image_data)}" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--rm);margin-top:10px">`:''}
+    ${r.image_url?`<img src="${esc(r.image_url)}" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--rm);margin-top:10px">`:''}
     ${(mine||isAdmin)?`<div class="pw-actions" style="margin-top:10px">
       ${isAdmin?`<button class="pw-act ${r.is_pinned?'on':''}" onclick="togglePinAnn('${r.id}',${r.is_pinned},this)">${r.is_pinned?'📌 Unpin':'📌 Pin'}</button>`:''}
       <button class="pw-act danger" onclick="deleteAnn('${r.id}',this)">Remove</button>
@@ -2462,7 +2471,7 @@ async function submitBishopAnn(){
       pastor_id:'bishop',
       title:$('b-ann-title')?.value.trim()||'',
       body:text||'',
-      image_data:imageUrl||null,
+      image_url:imageUrl||null,
       is_pinned:false,
       status:'active'
     });
@@ -2737,7 +2746,7 @@ async function loadBishopWins(){
           <span style="margin-left:auto;font-size:20px">🏆</span>
         </div>
         ${r.win_text?`<div class="pw-body">${esc(r.win_text)}</div>`:''}
-        ${r.image_data?`<img src="${esc(r.image_data)}" style="width:100%;max-height:320px;object-fit:cover;border-radius:var(--rm);margin-top:8px" alt="Win photo">`:''}
+        ${r.image_url?`<img src="${esc(r.image_url)}" style="width:100%;max-height:320px;object-fit:cover;border-radius:var(--rm);margin-top:8px" alt="Win photo">`:''}
         <div class="pw-actions">
           <button class="pw-act ${r.is_pinned?'on':''}" onclick="bishopPinWin('${r.id}',this)">${r.is_pinned?'📌 Pinned':'📌 Pin'}</button>
           <button class="pw-act" onclick="bishopCelebrate('${r.id}',this)">🔥 Celebrate</button>
@@ -4525,12 +4534,12 @@ create table rf_announcements (
   pastor_id text not null,
   title text default '',
   body text default '',
-  image_data text,
+  image_url text,
   is_pinned bool default false,
   status text default 'active',
   created_at timestamptz default now()
 );
--- Note: image_data stores base64 encoded images (keep under 4MB per image)
+-- Note: image_url stores a Supabase Storage public URL — never base64.
 
 -- Enable RLS on sensitive tables
 alter table rf_checkins enable row level security;

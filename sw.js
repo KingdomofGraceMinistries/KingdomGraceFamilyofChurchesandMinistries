@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v10';
+const CACHE_NAME = 'kg-pastoral-v11';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -126,16 +126,26 @@ async function networkOrQueue(request) {
   try {
     return await fetch(request);
   } catch {
-    // Offline — store the mutation in IndexedDB for later sync
+    // Offline — store the mutation in IndexedDB for later sync.
+    // SEC-10: ensure every queued mutation carries an Idempotency-Key so a
+    // replay after a half-completed earlier attempt is dedupable. The HTML
+    // layer adds one on every mutation, but we double-defend here in case
+    // a request slipped through from a different code path.
+    const headers = Object.fromEntries(request.headers.entries());
+    if (!headers['Idempotency-Key'] && !headers['idempotency-key']) {
+      headers['Idempotency-Key'] = (self.crypto && self.crypto.randomUUID)
+        ? self.crypto.randomUUID()
+        : ('idem-' + Date.now() + '-' + Math.floor(Math.random() * 1e9).toString(36));
+    }
     const body = await request.clone().text();
     await queueMutation({
       url: request.url,
       method: request.method,
-      headers: Object.fromEntries(request.headers.entries()),
-      body: body,
+      headers,
+      body,
+      idempotency_key: headers['Idempotency-Key'] || headers['idempotency-key'],
       timestamp: Date.now()
     });
-    // Notify the client that data was queued
     const clients = await self.clients.matchAll();
     clients.forEach((client) => {
       client.postMessage({ type: 'QUEUED_OFFLINE', url: request.url });
@@ -151,16 +161,57 @@ async function networkOrQueue(request) {
 
 function openQueue() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('kg-offline-queue', 1);
+    // v2 adds a `processed_keys` object store for SEC-10 dedup. Bumping the
+    // version triggers onupgradeneeded on existing clients without losing
+    // the existing `mutations` store.
+    const req = indexedDB.open('kg-offline-queue', 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('mutations')) {
         db.createObjectStore('mutations', { keyPath: 'id', autoIncrement: true });
       }
+      if (!db.objectStoreNames.contains('processed_keys')) {
+        db.createObjectStore('processed_keys', { keyPath: 'key' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+async function isKeyProcessed(key) {
+  if (!key) return false;
+  const db = await openQueue();
+  return new Promise((resolve) => {
+    const tx = db.transaction('processed_keys', 'readonly');
+    const req = tx.objectStore('processed_keys').get(key);
+    req.onsuccess = () => resolve(!!req.result);
+    req.onerror   = () => resolve(false);
+  });
+}
+
+async function markKeyProcessed(key) {
+  if (!key) return;
+  const db = await openQueue();
+  await new Promise((resolve) => {
+    const tx = db.transaction('processed_keys', 'readwrite');
+    tx.objectStore('processed_keys').put({ key, at: Date.now() });
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => resolve();
+  });
+  // Prune entries older than 7 days to keep IDB tidy.
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  try {
+    const pdb = await openQueue();
+    const tx2 = pdb.transaction('processed_keys', 'readwrite');
+    const store = tx2.objectStore('processed_keys');
+    const all = store.getAll();
+    all.onsuccess = () => {
+      for (const row of all.result || []) {
+        if (row.at && row.at < cutoff) store.delete(row.key);
+      }
+    };
+  } catch (_) { /* prune is best-effort */ }
 }
 
 async function queueMutation(mutation) {
@@ -204,6 +255,14 @@ self.addEventListener('sync', (e) => {
 async function replayQueue() {
   const queued = await getAllQueued();
   for (const item of queued) {
+    // SEC-10: if this idempotency key has already been acknowledged once,
+    // drop the queued attempt instead of replaying it. Catches the dupe
+    // case where the original request succeeded server-side but the client
+    // never saw the 2xx (network dropped) and SW re-queued.
+    if (item.idempotency_key && await isKeyProcessed(item.idempotency_key)) {
+      await clearQueued(item.id);
+      continue;
+    }
     try {
       const response = await fetch(item.url, {
         method: item.method,
@@ -212,13 +271,13 @@ async function replayQueue() {
       });
       if (response.ok || response.status < 500) {
         await clearQueued(item.id);
+        if (item.idempotency_key) await markKeyProcessed(item.idempotency_key);
       }
     } catch {
       // Still offline — stop trying, sync will fire again
       break;
     }
   }
-  // Notify clients of sync result
   const remaining = await getAllQueued();
   const clients = await self.clients.matchAll();
   clients.forEach((client) => {
