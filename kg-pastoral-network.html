@@ -781,18 +781,29 @@ async function storageUpload(bucket, path, file){
 }
 
 // ── AUDIT LOGGER ──
+// Routes through the kgfcm-audit edge function (SEC-6). The function reads
+// actor_id and actor_role from the verified JWT — clients cannot spoof
+// either anymore. Pre-login calls (no access_token) skip silently; the
+// login/register edge functions write their own server-side audit rows.
 async function audit(eventType, meta={}){
   try {
-    const actor=ST.session||{};
-    await sbI('rf_audit_log',{
-      event_type:eventType,
-      actor_id:actor.userId||'anonymous',
-      actor_role:actor.role||'unknown',
-      target_table:meta.table||null,
-      target_id:meta.targetId||null,
-      metadata:JSON.stringify({...meta,table:undefined,targetId:undefined}),
+    if(!ST.session?.access_token) return;
+    const {table, targetId, ...rest} = meta;
+    await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-audit`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey':SB_API_KEY(),
+        'Authorization':'Bearer '+ST.session.access_token,
+      },
+      body: JSON.stringify({
+        event_type:   eventType,
+        target_table: table    || null,
+        target_id:    targetId || null,
+        metadata:     rest,
+      }),
     });
-  } catch(e){/* audit failures must not break the app */}
+  } catch(e){ /* audit failures must not break the app */ }
 }
 
 async function aiCall(prompt,callType='care'){

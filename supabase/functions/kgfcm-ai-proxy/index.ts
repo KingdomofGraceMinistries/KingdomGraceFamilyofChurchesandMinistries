@@ -1,52 +1,56 @@
 // ============================================================
-// kgfcm-ai-proxy — Claude Haiku AI Proxy for Kingdom Grace
-// Supabase Edge Function (Deno runtime)
+// kgfcm-ai-proxy — Claude Haiku AI proxy for Kingdom Grace
+//
+// Requires a valid Supabase Auth JWT (verify_jwt: true at deploy).
+// Rate-limits per user. Audits success / failure via the shared
+// server-side audit() — never console.* (SEC-6).
 // ============================================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
+import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
+import { audit } from "../_shared/audit.ts";
+import { rateLimit } from "../_shared/rate_limit.ts";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") || "";
-const MODEL = "claude-haiku-4-5-20251001";
+const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")              ?? "";
+const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANTHROPIC_API_KEY  = Deno.env.get("ANTHROPIC_API_KEY")         ?? "";
+const MODEL              = "claude-haiku-4-5-20251001";
 const MAX_TOKENS_DEFAULT = 512;
-const MAX_TOKENS_BY_TYPE: Record<string, number> = {
-  outreach: 1500,
-};
+const MAX_TOKENS_BY_TYPE: Record<string, number> = { outreach: 1500 };
 
-// CORS headers — restrict to your domains in production
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
+  if (!isOriginAllowed(req))    return jsonResponse(req, { error: "Forbidden origin" }, 403);
+  if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-serve(async (req: Request) => {
-  // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const ip = (req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!jwt) return jsonResponse(req, { error: "Missing JWT" }, 401);
+  const { data: userData, error: userErr } = await supa.auth.getUser(jwt);
+  if (userErr || !userData.user) return jsonResponse(req, { error: "Invalid session" }, 401);
+  const user = userData.user;
+
+  // Rate-limit AI calls per user — 30/hour is generous; the AI proxy is the
+  // most expensive endpoint, both in latency and in Anthropic billing.
+  const rl = await rateLimit({ supa, email: user.email ?? user.id, ip, kind: "login" });
+  if (rl.limited) {
+    await audit(supa, "AI_RATE_LIMITED", { actor_id: user.id, ip_address: ip });
+    return jsonResponse(req, { error: "Too many requests. Please slow down." }, 429);
   }
 
   try {
     const { callType, prompt } = await req.json();
-
     if (!prompt || !callType) {
-      return new Response(JSON.stringify({ error: "Missing callType or prompt" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Missing callType or prompt" }, 400);
     }
+    const systemPrompt = getSystemPrompt(String(callType));
+    const maxTokens = MAX_TOKENS_BY_TYPE[String(callType)] ?? MAX_TOKENS_DEFAULT;
 
-    // Build the system prompt based on call type
-    const systemPrompt = getSystemPrompt(callType);
-    const maxTokens = MAX_TOKENS_BY_TYPE[callType] || MAX_TOKENS_DEFAULT;
-
-    // Call Claude Haiku
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -58,46 +62,33 @@ serve(async (req: Request) => {
         model: MODEL,
         max_tokens: maxTokens,
         system: systemPrompt,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: String(prompt) }],
       }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("Claude API error:", response.status, errText);
-      return new Response(JSON.stringify({ error: "AI service unavailable" }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      await audit(supa, "AI_UPSTREAM_ERROR", {
+        actor_id: user.id, ip_address: ip,
+        status: response.status, call_type: callType,
       });
+      return jsonResponse(req, { error: "AI service unavailable" }, 502);
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text || "";
-
-    // Try to parse as JSON (prompts return structured data)
+    const text = data.content?.[0]?.text ?? "";
     let result: unknown;
-    try {
-      result = JSON.parse(text);
-    } catch {
-      result = text;
-    }
+    try { result = JSON.parse(text); } catch { result = text; }
 
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    await audit(supa, "AI_CALL_OK", { actor_id: user.id, call_type: callType });
+    return jsonResponse(req, result, 200);
   } catch (err) {
-    console.error("Edge function error:", err);
-    return new Response(JSON.stringify({ error: "Internal error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    await audit(supa, "AI_FN_ERROR", {
+      actor_id: user.id, ip_address: ip,
+      error: err instanceof Error ? err.message : String(err),
     });
+    return jsonResponse(req, { error: "Internal error" }, 500);
   }
 });
-
-// ============================================================
-// SYSTEM PROMPTS BY CALL TYPE
-// ============================================================
 
 function getSystemPrompt(callType: string): string {
   switch (callType) {
