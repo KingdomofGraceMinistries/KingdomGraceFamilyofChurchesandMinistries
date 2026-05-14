@@ -1105,12 +1105,24 @@ async function runBurnoutCheck(){
 // ============================================================
 // AI CONTENT
 // ============================================================
+// "Renderable" = has the three required substantive fields. `theme` is a
+// nice-to-have label; if AI omits it we synthesize a neutral one rather than
+// throw the whole prompt away. The three fields below are what the home
+// screen actually displays as content.
 function isValidWeekPrompt(d){
   return d && typeof d==='object'
     && typeof d.prompt==='string'    && d.prompt.trim().length > 0
     && typeof d.scripture==='string' && d.scripture.trim().length > 0
-    && typeof d.ref==='string'       && d.ref.trim().length > 0
-    && typeof d.theme==='string'     && d.theme.trim().length > 0;
+    && typeof d.ref==='string'       && d.ref.trim().length > 0;
+}
+function normalizeWeekPrompt(d){
+  if(!isValidWeekPrompt(d)) return null;
+  return {
+    prompt:    d.prompt.trim(),
+    scripture: d.scripture.trim(),
+    ref:       d.ref.trim(),
+    theme:     (typeof d.theme==='string' && d.theme.trim()) || 'This week',
+  };
 }
 // Purge any cached AI content under `<appId>_<prefix><something>` whose
 // "something" doesn't match the current bucket. Keeps localStorage from
@@ -1128,24 +1140,36 @@ function purgeStaleAIKeys(prefix, currentBucket){
     }
   } catch(_) { /* private mode etc. — non-fatal */ }
 }
+// Read the Bishop-configured fallback from rf_network_config. The Bishop sets
+// `default_week_prompt` as a JSON string in the SQL Editor (or future admin UI);
+// until he does, the row holds an empty string and this returns null.
+async function getBishopConfiguredWeekPrompt(){
+  try {
+    const rows = await sbS('rf_network_config',{select:'value', key:'eq.default_week_prompt'});
+    const raw = rows?.[0]?.value;
+    if(!raw || !raw.trim()) return null;
+    return normalizeWeekPrompt(JSON.parse(raw));
+  } catch(_){ return null; }
+}
 async function getWeekPrompt(){
   const wk = weekNum();
   purgeStaleAIKeys('wp_', String(wk));
   const cached = loadLocal('wp_'+wk);
   // Defensive: an earlier malformed AI response could have poisoned the cache
-  // with an empty or partial object. Only honor the cache if it has all four
-  // expected keys filled in — otherwise re-fetch.
-  if(isValidWeekPrompt(cached)){ ST.weekPrompt=cached; return cached; }
+  // with an empty or partial object. Only honor the cache if it has the three
+  // required substantive fields.
+  if(isValidWeekPrompt(cached)){ ST.weekPrompt = normalizeWeekPrompt(cached); return ST.weekPrompt; }
   try {
     const raw = await aiCall(`Generate a weekly ministry team devotional discussion prompt for the ${C.networkName} pastoral network. Week ${wk} of the year. Make it personal, faith-stretching, and community-building. Anchor in scripture. JSON: {"prompt":"...","scripture":"...","ref":"...","theme":"..."}`,'team');
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
-    if(!isValidWeekPrompt(d)) throw new Error('AI returned an incomplete week prompt');
-    saveLocal('wp_'+wk,d); ST.weekPrompt=d; return d;
-  } catch(e){
-    // No fallback — theological content must never be hardcoded in a pastoral
-    // app. Returning null lets the caller render a neutral "unavailable"
-    // state instead of inventing scripture.
-    return null;
+    const norm = normalizeWeekPrompt(d);
+    if(!norm) throw new Error('AI returned an incomplete week prompt');
+    saveLocal('wp_'+wk, norm); ST.weekPrompt = norm; return norm;
+  } catch(_){
+    // AI path failed. Fall back to the Bishop-configured row in
+    // rf_network_config — content authored by the Bishop, not by the app.
+    // If he hasn't set one yet, return null and the renderer shows nothing.
+    return await getBishopConfiguredWeekPrompt();
   }
 }
 
@@ -1164,10 +1188,17 @@ async function getMonthChallenge(){
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
     if(!isValidChallenge(d)) throw new Error('AI returned an incomplete monthly challenge');
     saveLocal('mc_'+mo,d); ST.monthChallenge=d; return d;
-  } catch(e){
-    // No hardcoded fallback — theological content must never be invented by
-    // the app. Caller renders a neutral "unavailable" state instead.
-    return null;
+  } catch(_){
+    // AI path failed. Fall back to the Bishop-configured row in
+    // rf_network_config (default_month_challenge). Empty until Bishop sets
+    // it via SQL Editor; then this returns the parsed JSON.
+    try {
+      const rows = await sbS('rf_network_config',{select:'value', key:'eq.default_month_challenge'});
+      const rawCfg = rows?.[0]?.value;
+      if(!rawCfg || !rawCfg.trim()) return null;
+      const parsed = JSON.parse(rawCfg);
+      return isValidChallenge(parsed) ? parsed : null;
+    } catch(_){ return null; }
   }
 }
 
