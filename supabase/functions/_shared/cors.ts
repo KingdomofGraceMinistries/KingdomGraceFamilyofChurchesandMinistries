@@ -11,7 +11,7 @@ export function corsHeaders(req: Request): Record<string, string> {
   const allowed = ALLOWED.includes(origin) ? origin : (ALLOWED[0] ?? "");
   return {
     "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key, prefer",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",
   };

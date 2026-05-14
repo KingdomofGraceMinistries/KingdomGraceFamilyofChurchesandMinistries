@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v27';
+const CACHE_NAME = 'kg-pastoral-v28';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -57,9 +57,11 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Google Fonts — cache-first (they rarely change)
+  // Google Fonts: do NOT intercept. The page <link rel="stylesheet"> path
+  // loads them under the document's style-src/font-src, which allow Google.
+  // A fetch() from inside this worker would instead be checked against the
+  // page's connect-src (intentionally restricted to Supabase) and rejected.
   if (url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com')) {
-    e.respondWith(cacheFirstThenNetwork(req));
     return;
   }
 

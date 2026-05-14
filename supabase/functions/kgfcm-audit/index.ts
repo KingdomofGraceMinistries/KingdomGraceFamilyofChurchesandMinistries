@@ -20,7 +20,8 @@ import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
-const SERVICE_ROLE_KEY = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// JWT-format service role first: supabase-js 2.50.5 hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const EVENT_RE         = /^[A-Z][A-Z0-9_]{0,63}$/;       // SCREAMING_SNAKE_CASE, max 64 chars
 const MAX_META_BYTES   = 8192;                            // 8 KB cap per event
 

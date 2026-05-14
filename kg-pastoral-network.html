@@ -671,6 +671,13 @@ async function sbI(table,data){
   if(!r.ok) throw new Error((await r.json().catch(()=>({}))).message || 'Insert failed');
   return r.json();
 }
+async function sbUpsert(table,data,onConflict){
+  const headers = {...SB_HDR(),'Prefer':'resolution=merge-duplicates,return=representation'};
+  const url = `${C.supabaseUrl}/rest/v1/${table}?on_conflict=${encodeURIComponent(onConflict)}`;
+  const r = await sbWithRetry(() => fetch(url,{method:'POST',headers,body:JSON.stringify(data)}));
+  if(!r.ok) throw new Error((await r.json().catch(()=>({}))).message || 'Upsert failed');
+  return r.json();
+}
 async function sbU(table,filter,data){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:SB_HDR(),body:JSON.stringify(data)}));
   if(!r.ok){
@@ -1060,6 +1067,10 @@ async function editAnnouncement(id){
 async function audit(eventType, meta={}){
   try {
     if(!ST.session?.access_token) return;
+    // Skip if the token is already past expires_at; the call would 401 and
+    // the browser would log a network error even though we'd swallow the throw.
+    const exp = ST.session.expires_at;
+    if(exp && Math.floor(Date.now()/1000) >= Number(exp)) return;
     const {table, targetId, ...rest} = meta;
     await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-audit`, {
       method:'POST',
@@ -5116,19 +5127,13 @@ async function subscribeToPush(){
     const subJson=sub.toJSON();
     const userId=ST.session?.authUserId;
     if(!userId) return;
-    await sbI('rf_push_subscriptions',{
+    await sbUpsert('rf_push_subscriptions',{
       user_id:userId,
       endpoint:subJson.endpoint,
       p256dh:subJson.keys?.p256dh||'',
-      auth:subJson.keys?.auth||''
-    }).catch(async ()=>{
-      // Likely duplicate — update instead
-      await sbU('rf_push_subscriptions',`user_id=eq.${userId}&endpoint=eq.${encodeURIComponent(subJson.endpoint)}`,{
-        p256dh:subJson.keys?.p256dh||'',
-        auth:subJson.keys?.auth||'',
-        updated_at:new Date().toISOString()
-      }).catch(()=>{});
-    });
+      auth:subJson.keys?.auth||'',
+      updated_at:new Date().toISOString()
+    },'user_id,endpoint').catch(()=>{});
     audit('PUSH_SUBSCRIBED',{endpoint_host: (subJson.endpoint||'').split('/')[2] || 'unknown'});
   } catch(e){
     // Subscribe can throw on iOS PWA if user denies, on Android if the device
