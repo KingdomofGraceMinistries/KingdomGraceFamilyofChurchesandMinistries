@@ -857,6 +857,184 @@ async function storageDelete(bucket, paths){
   return r.json();
 }
 
+// ── EDIT / DELETE HELPERS ──
+// "Can I modify this row?" — true if I authored it OR I'm bishop/admin.
+// Used to gate the inline ✎ / 🗑 buttons on every user-authored card.
+function canModifyContent(authorId){
+  if(!authorId) return false;
+  if(authorId === ST.session?.userId) return true;
+  return ST.session?.role === 'bishop' || ST.session?.role === 'admin';
+}
+
+// "edited HH:MM ago" badge for renderers. Empty string if not edited.
+function editedBadge(row){
+  if(!row || !row.edited_at) return '';
+  return ` · <em style="font-size:10px;color:var(--ash);font-style:italic">edited ${timeAgo(row.edited_at)}</em>`;
+}
+
+// Modal text editor. Single-purpose: prompt the user for a new value for one
+// field, then call onSave(newValue). Used by every edit handler below.
+function openTextEditor({title, value, placeholder, multiline=true, onSave}){
+  const existing = document.getElementById('kg-text-editor');
+  if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'kg-text-editor';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10003;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  const inputHtml = multiline
+    ? `<textarea id="kg-text-editor-input" class="fin" rows="6" style="resize:vertical;width:100%" placeholder="${esc(placeholder||'')}">${esc(value||'')}</textarea>`
+    : `<input id="kg-text-editor-input" class="fin" type="text" style="width:100%" placeholder="${esc(placeholder||'')}" value="${esc(value||'')}">`;
+  modal.innerHTML = `
+    <div style="background:var(--ink2);border:1px solid var(--gold);border-radius:var(--r);max-width:560px;width:100%;padding:20px;margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--gold)">${esc(title||'Edit')}</div>
+        <button class="pw-act" type="button" onclick="closeTextEditor()">✕</button>
+      </div>
+      ${inputHtml}
+      <div class="err" id="kg-text-editor-err" style="margin-top:10px"></div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="fsub" id="kg-text-editor-save" style="flex:1" type="button">Save</button>
+        <button class="pw-act" type="button" onclick="closeTextEditor()">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const saveBtn = document.getElementById('kg-text-editor-save');
+  const input = document.getElementById('kg-text-editor-input');
+  saveBtn.onclick = async () => {
+    const newValue = (input?.value || '').trim();
+    if(!newValue){ showErr('kg-text-editor-err','Cannot be empty.'); return; }
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      await onSave(newValue);
+      closeTextEditor();
+    } catch(e){
+      showErr('kg-text-editor-err', e?.message ? e.message.slice(0,200) : 'Save failed.');
+      saveBtn.disabled = false; saveBtn.textContent = 'Save';
+    }
+  };
+  setTimeout(() => input?.focus(), 50);
+}
+function closeTextEditor(){
+  const m = document.getElementById('kg-text-editor');
+  if(m) m.remove();
+}
+
+// Each edit handler fetches the current value from the DB before opening the
+// modal. This avoids embedding arbitrary user text in inline onclick attributes
+// (escape gymnastics, XSS surface) and guarantees the editor opens with the
+// latest authoritative value. Cost: one extra round trip per Edit click —
+// trivially cheap since edits are rare.
+const REFRESH = {
+  prayer:  () => { if(typeof loadPrayer==='function') loadPrayer(); if(typeof loadBishopPrayer==='function' && ST.session?.role!=='pastor') loadBishopPrayer(); },
+  wins:    () => { if(typeof loadWins==='function') loadWins(); if(typeof loadBishopWins==='function' && ST.session?.role!=='pastor') loadBishopWins(); },
+  team:    () => { if(typeof loadTeam==='function') loadTeam(); },
+  dm:      () => { if(typeof loadDM==='function') loadDM(); if(typeof loadBishopThread==='function' && ST.bishopThreadPastorId) loadBishopThread(ST.bishopThreadPastorId); },
+  ann:     () => { if(typeof loadAnnouncements==='function') loadAnnouncements(); if(typeof loadBishopAnnouncements==='function' && ST.session?.role!=='pastor') loadBishopAnnouncements(); },
+  comment: (winId) => { if(typeof renderWinComments==='function' && winId) renderWinComments(winId); },
+};
+
+async function editPrayerRequest(id){
+  let current = '';
+  try { const rows = await sbS('rf_prayer_requests',{select:'request_text', id:'eq.'+id}); current = rows?.[0]?.request_text || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit prayer request', value: current, placeholder: "What's on your heart?",
+    onSave: async (newText) => {
+      await sbU('rf_prayer_requests','id=eq.'+id, {request_text:newText, edited_at:new Date().toISOString()});
+      audit('PRAYER_EDITED',{table:'rf_prayer_requests', targetId:id});
+      REFRESH.prayer();
+    }
+  });
+}
+async function deletePrayerRequest(id){
+  if(!confirm('Delete this prayer request? This cannot be undone.')) return;
+  try { await sbD('rf_prayer_requests','id=eq.'+id); audit('PRAYER_DELETED',{table:'rf_prayer_requests', targetId:id}); REFRESH.prayer(); }
+  catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
+}
+
+async function editWinPost(id){
+  let current = '';
+  try { const rows = await sbS('rf_wins',{select:'win_text', id:'eq.'+id}); current = rows?.[0]?.win_text || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit win', value: current, placeholder: 'What did God do?',
+    onSave: async (newText) => {
+      await sbU('rf_wins','id=eq.'+id, {win_text:newText, edited_at:new Date().toISOString()});
+      audit('WIN_EDITED',{table:'rf_wins', targetId:id});
+      REFRESH.wins();
+    }
+  });
+}
+async function deleteWinPost(id){
+  if(!confirm('Delete this win? This cannot be undone.')) return;
+  try { await sbD('rf_wins','id=eq.'+id); audit('WIN_DELETED',{table:'rf_wins', targetId:id}); REFRESH.wins(); }
+  catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
+}
+
+async function editWinCommentRow(commentId, winId){
+  let current = '';
+  try { const rows = await sbS('rf_win_comments',{select:'comment_text', id:'eq.'+commentId}); current = rows?.[0]?.comment_text || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit comment', value: current, placeholder: 'Add a word of encouragement',
+    onSave: async (newText) => {
+      await sbU('rf_win_comments','id=eq.'+commentId, {comment_text:newText, edited_at:new Date().toISOString()});
+      audit('WIN_COMMENT_EDITED',{table:'rf_win_comments', targetId:commentId});
+      REFRESH.comment(winId);
+    }
+  });
+}
+async function deleteWinCommentRow(commentId, winId){
+  if(!confirm('Delete this comment? This cannot be undone.')) return;
+  try { await sbD('rf_win_comments','id=eq.'+commentId); audit('WIN_COMMENT_DELETED',{table:'rf_win_comments', targetId:commentId}); REFRESH.comment(winId); }
+  catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
+}
+
+async function editDM(messageId){
+  let current = '';
+  try { const rows = await sbS('rf_direct_messages',{select:'message_text', id:'eq.'+messageId}); current = rows?.[0]?.message_text || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit message', value: current, placeholder: 'Type your message',
+    onSave: async (newText) => {
+      await sbU('rf_direct_messages','id=eq.'+messageId, {message_text:newText, edited_at:new Date().toISOString()});
+      audit('DM_EDITED',{table:'rf_direct_messages', targetId:messageId});
+      REFRESH.dm();
+    }
+  });
+}
+async function deleteDM(messageId){
+  if(!confirm('Delete this message? It will be removed from both sides.')) return;
+  try { await sbD('rf_direct_messages','id=eq.'+messageId); audit('DM_DELETED',{table:'rf_direct_messages', targetId:messageId}); REFRESH.dm(); }
+  catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
+}
+
+async function editTeamResponseRow(id){
+  let current = '';
+  try { const rows = await sbS('rf_team_responses',{select:'response_text', id:'eq.'+id}); current = rows?.[0]?.response_text || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit response', value: current, placeholder: 'Share with the team',
+    onSave: async (newText) => {
+      await sbU('rf_team_responses','id=eq.'+id, {response_text:newText, edited_at:new Date().toISOString()});
+      audit('TEAM_RESPONSE_EDITED',{table:'rf_team_responses', targetId:id});
+      REFRESH.team();
+    }
+  });
+}
+async function deleteTeamResponseRow(id){
+  if(!confirm('Delete this response? This cannot be undone.')) return;
+  try { await sbD('rf_team_responses','id=eq.'+id); audit('TEAM_RESPONSE_DELETED',{table:'rf_team_responses', targetId:id}); REFRESH.team(); }
+  catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
+}
+
+async function editAnnouncement(id){
+  let current = '';
+  try { const rows = await sbS('rf_announcements',{select:'body', id:'eq.'+id}); current = rows?.[0]?.body || ''; } catch(_){}
+  openTextEditor({
+    title: 'Edit announcement', value: current, placeholder: 'Announcement text',
+    onSave: async (newBody) => {
+      await sbU('rf_announcements','id=eq.'+id, {body:newBody, edited_at:new Date().toISOString()});
+      audit('ANNOUNCEMENT_EDITED',{table:'rf_announcements', targetId:id});
+      REFRESH.ann();
+    }
+  });
+}
+
 // ── AUDIT LOGGER ──
 // Routes through the kgfcm-audit edge function (SEC-6). The function reads
 // actor_id and actor_role from the verified JWT — clients cannot spoof
@@ -1415,9 +1593,13 @@ async function loadTeam(){
     const rows=await sbS('rf_team_responses',{select:'*,rf_pastors(full_name,avatar_url)',week_number:'eq.'+weekNum(),order:'created_at.asc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}${editedBadge(r)}</div></div>
         ${r.is_pinned?'<span class="pill pill-gold" style="margin-left:auto">📌</span>':''}
       </div><div class="pw-body">${esc(r.response_text)}</div>
+      ${canModifyContent(r.pastor_id)?`<div class="pw-actions">
+        <button class="pw-act" onclick="editTeamResponseRow('${r.id}')">✎ Edit</button>
+        <button class="pw-act danger" onclick="deleteTeamResponseRow('${r.id}')">🗑 Delete</button>
+      </div>`:''}
     </div>`).join(''):'<div class="empty">Be the first to respond this week.</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load. Check connection.</div>';}
 }
@@ -1429,12 +1611,14 @@ async function loadPrayer(){
     const rows=await sbS('rf_prayer_requests',{select:'*,rf_pastors(full_name,avatar_url)',status:'eq.active',order:'created_at.desc'});
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}${editedBadge(r)}</div></div>
         <span class="pill pill-mist" style="margin-left:auto">🙏 ${r.prayed_count||0}</span>
       </div><div class="pw-body">${esc(r.request_text)}</div>
       <div class="pw-actions">
         <button class="pw-act" onclick="markPrayed('${r.id}',this)">🙏 I Prayed</button>
         <button class="pw-act" onclick="encouragePrayer('${r.id}',this)">💬 Encourage</button>
+        ${canModifyContent(r.pastor_id)?`<button class="pw-act" onclick="editPrayerRequest('${r.id}')">✎ Edit</button>
+        <button class="pw-act danger" onclick="deletePrayerRequest('${r.id}')">🗑 Delete</button>`:''}
       </div>
     </div>`).join(''):'<div class="empty">No active requests. Share one with your team.</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load prayer wall.</div>';}
@@ -1456,7 +1640,7 @@ async function loadWins(){
     }
     list.innerHTML=rows.length?rows.map(r=>`<div class="pw-item">
       <div class="pw-header"${r.pastor_id&&r.pastor_id!=='bishop'?` style="cursor:pointer" onclick="viewPastor('${r.pastor_id}')"`:''}>${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'?',34)}
-        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}</div></div>
+        <div><div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div><div class="pw-time">${timeAgo(r.created_at)}${editedBadge(r)}</div></div>
         <span style="margin-left:auto;font-size:20px">🏆</span>
       </div>
       ${r.win_text?`<div class="pw-body">${esc(r.win_text)}</div>`:''}
@@ -1468,6 +1652,8 @@ async function loadWins(){
         <button class="pw-act" onclick="reactWin('${r.id}','heart',this)">❤️ ${r.heart_count||0}</button>
         <button class="pw-act" onclick="reactWin('${r.id}','amen',this)">🙏 ${r.amen_count||0}</button>
         <button class="pw-act" onclick="toggleWinComments('${r.id}',this)">💬 ${commentsByWin[r.id]||0}</button>
+        ${canModifyContent(r.pastor_id)?`<button class="pw-act" onclick="editWinPost('${r.id}')">✎ Edit</button>
+        <button class="pw-act danger" onclick="deleteWinPost('${r.id}')">🗑 Delete</button>`:''}
       </div>
       <div class="win-comments" id="win-comments-${r.id}" style="display:none;margin-top:10px;border-top:0.5px solid var(--br);padding-top:10px"></div>
     </div>`).join(''):'<div class="empty">No wins posted yet. Share what God is doing!</div>';
@@ -1495,7 +1681,11 @@ async function renderWinComments(winId){
         <div style="flex:1;min-width:0;background:var(--ink3);border-radius:var(--rs);padding:8px 10px">
           <div style="font-size:12px;font-weight:500;color:var(--frost)">${esc(c.pastor_name||'Pastor')}</div>
           <div style="font-size:12px;color:var(--mist);line-height:1.5;margin-top:2px;white-space:pre-wrap">${esc(c.comment_text)}</div>
-          <div style="font-size:9px;color:var(--ash);margin-top:4px">${timeAgo(c.created_at)}</div>
+          <div style="font-size:9px;color:var(--ash);margin-top:4px">${timeAgo(c.created_at)}${editedBadge(c)}</div>
+          ${canModifyContent(c.pastor_id)?`<div style="display:flex;gap:4px;margin-top:4px">
+            <button class="pw-act" style="padding:2px 8px;font-size:10px" onclick="editWinCommentRow('${c.id}','${winId}')">✎</button>
+            <button class="pw-act danger" style="padding:2px 8px;font-size:10px" onclick="deleteWinCommentRow('${c.id}','${winId}')">🗑</button>
+          </div>`:''}
         </div>
       </div>`).join(''):'<div style="font-size:11px;color:var(--ash);font-style:italic;margin-bottom:10px">No comments yet — be the first to celebrate with them.</div>'}
       <div style="display:flex;gap:6px;align-items:flex-start">
@@ -2205,8 +2395,14 @@ async function loadDM(){
     list.innerHTML=rows.length?rows.map(r=>{
       const mine=r.sender_id===uid;
       const receipt=mine?(r.is_read?'<span style="color:var(--gold);font-size:10px;margin-left:4px" title="Read">✓✓</span>':'<span style="color:var(--ash);font-size:10px;margin-left:4px" title="Sent">✓</span>'):'';
+      const actions = (mine || ST.session?.role==='bishop' || ST.session?.role==='admin')
+        ? `<div class="dm-actions" style="display:flex;gap:4px;justify-content:${mine?'flex-end':'flex-start'};margin-top:2px">
+            <button class="pw-act" style="padding:2px 8px;font-size:10px" onclick="editDM('${r.id}')">✎</button>
+            <button class="pw-act danger" style="padding:2px 8px;font-size:10px" onclick="deleteDM('${r.id}')">🗑</button>
+          </div>`
+        : '';
       return `<div class="dm-item ${mine?'mine':''}">
-        <div><div class="dm-bubble">${esc(r.message_text)}</div><div class="dm-time">${timeAgo(r.created_at)}${receipt}</div></div>
+        <div><div class="dm-bubble">${esc(r.message_text)}</div><div class="dm-time">${timeAgo(r.created_at)}${editedBadge(r)}${receipt}</div>${actions}</div>
       </div>`;
     }).join(''):'<div style="padding:40px 0;text-align:center;color:var(--ash);font-size:13px;font-style:italic">Start a conversation with your Bishop.</div>';
     list.scrollTop=list.scrollHeight;
@@ -2727,7 +2923,7 @@ function annCard(r, role){
       ${avHTML(r.rf_pastors?.avatar_url,r.rf_pastors?.full_name||'Pastor',34)}
       <div style="flex:1;min-width:0">
         <div class="pw-name">${esc(r.rf_pastors?.full_name||'Pastor')}</div>
-        <div class="pw-time">${timeAgo(r.created_at)}</div>
+        <div class="pw-time">${timeAgo(r.created_at)}${editedBadge(r)}</div>
       </div>
       ${r.is_pinned?'<span class="pill pill-gold" style="margin-left:auto">📌 Pinned</span>':''}
     </div>
@@ -2736,7 +2932,8 @@ function annCard(r, role){
     ${r.image_url?`<img src="${esc(r.image_url)}" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--rm);margin-top:10px">`:''}
     ${(mine||isAdmin)?`<div class="pw-actions" style="margin-top:10px">
       ${isAdmin?`<button class="pw-act ${r.is_pinned?'on':''}" onclick="togglePinAnn('${r.id}',${r.is_pinned},this)">${r.is_pinned?'📌 Unpin':'📌 Pin'}</button>`:''}
-      <button class="pw-act danger" onclick="deleteAnn('${r.id}',this)">Remove</button>
+      <button class="pw-act" onclick="editAnnouncement('${r.id}')">✎ Edit</button>
+      <button class="pw-act danger" onclick="deleteAnn('${r.id}',this)">🗑 Remove</button>
     </div>`:''}
   </div>`;
 }
