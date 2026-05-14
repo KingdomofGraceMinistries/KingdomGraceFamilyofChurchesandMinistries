@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v18';
+const CACHE_NAME = 'kg-pastoral-v19';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -132,21 +132,30 @@ async function networkFirstThenCache(request) {
 }
 
 async function networkOrQueue(request) {
+  // Snapshot the body BEFORE attempting fetch. A failed fetch (CORS preflight
+  // reject, network error, etc.) still consumes the request body stream, so
+  // calling request.clone().text() afterwards throws "body is already used".
+  // Reading from a fresh clone first guarantees we have the bytes to queue
+  // even when the original Request gets exhausted by the failed fetch.
+  const bodySnapshot = (request.method !== 'GET' && request.method !== 'HEAD')
+    ? await request.clone().text()
+    : '';
   try {
     return await fetch(request);
   } catch {
-    // Offline — store the mutation in IndexedDB for later sync.
-    // SEC-10: ensure every queued mutation carries an Idempotency-Key so a
-    // replay after a half-completed earlier attempt is dedupable. The HTML
-    // layer adds one on every mutation, but we double-defend here in case
-    // a request slipped through from a different code path.
+    // Offline / CORS-rejected / network — store the mutation in IndexedDB
+    // for later sync. SEC-10: ensure every queued mutation carries an
+    // Idempotency-Key so a replay after a half-completed earlier attempt is
+    // dedupable. The HTML layer adds one on every mutation, but we double-
+    // defend here in case a request slipped through from a different code
+    // path.
     const headers = Object.fromEntries(request.headers.entries());
     if (!headers['Idempotency-Key'] && !headers['idempotency-key']) {
       headers['Idempotency-Key'] = (self.crypto && self.crypto.randomUUID)
         ? self.crypto.randomUUID()
         : ('idem-' + Date.now() + '-' + Math.floor(Math.random() * 1e9).toString(36));
     }
-    const body = await request.clone().text();
+    const body = bodySnapshot;
     await queueMutation({
       url: request.url,
       method: request.method,
