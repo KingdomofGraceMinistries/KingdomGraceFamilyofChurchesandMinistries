@@ -3,14 +3,17 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v26';
+const CACHE_NAME = 'kg-pastoral-v27';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
+// Same-origin only. Cross-origin precache (e.g. Google Fonts) is governed by
+// the document's connect-src CSP, which intentionally locks the SW down to
+// Supabase + self. The document's <link rel="stylesheet"> still loads
+// Google Fonts via style-src / font-src — that path is unaffected.
 const CACHE_URLS = [
   '/manifest.json',
-  '/icons/kg-logo.jpg',
-  'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap'
+  '/icons/kg-logo.jpg'
 ];
 
 // ── INSTALL: Pre-cache the app shell ──

@@ -645,11 +645,24 @@ async function refreshSession(){
   } catch(e){ return false; }
 }
 
-// PostgREST helpers with one-shot 401 refresh-and-retry.
+// PostgREST helpers with one-shot 401/403 refresh-and-retry. PostgREST
+// returns 401 when the JWT is rejected at the auth layer and 403 when RLS
+// denies the row — but if our access_token is missing/expired we fall back
+// to the publishable (anon) key in SB_AUTH_TOKEN, and PostgREST returns 403
+// because anon has no UPDATE/DELETE policy. Retry on either status after
+// a token refresh.
 async function sbWithRetry(builder){
   let r = await builder();
-  if(r.status === 401 && await refreshSession()){
+  if((r.status === 401 || r.status === 403) && await refreshSession()){
     r = await builder();
+  }
+  // If we still got an auth failure after refresh AND we don't have a
+  // session token, force the user back to login — don't keep firing requests
+  // as anon that will all 403. This is the honest "your session expired" UX
+  // instead of mysterious silent failures.
+  if((r.status === 401 || r.status === 403) && !ST.session?.access_token){
+    try { await signOutSession(); } catch(_){}
+    go('s-login');
   }
   return r;
 }
@@ -660,7 +673,11 @@ async function sbI(table,data){
 }
 async function sbU(table,filter,data){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:SB_HDR(),body:JSON.stringify(data)}));
-  if(!r.ok) throw new Error('Update failed');
+  if(!r.ok){
+    let msg = 'Update failed ('+r.status+')';
+    try { const d = await r.json(); msg = d?.message || d?.error || msg; } catch(_){}
+    throw new Error(msg);
+  }
   return r.json();
 }
 async function sbD(table,filter){
@@ -1400,21 +1417,31 @@ async function logout(){
 // ============================================================
 async function loadHome(){
   runBurnoutCheck();
-  const wp=await getWeekPrompt();
+  // Home shows the SCRIPTURE OF THE DAY only — verse + reference, nothing
+  // else. The full devotion built around that scripture lives on its own
+  // screen (s-devotion); we don't surface it here. Source: today's
+  // rf_devotions row, written daily by the cron. One DB read per visit, no
+  // client-side AI, no localStorage cache, no hardcoded fallback.
   const wpEl=$('home-wp');
   if(wpEl){
-    if(wp){
-      wpEl.innerHTML = `<div class="week-prompt">
-        <div class="week-label">🕯️ Week ${weekNum()} · ${esc(wp.theme)}</div>
-        <div class="week-question">"${esc(wp.prompt)}"</div>
-        <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
-        <div style="margin-top:12px"><button class="fsub" style="padding:9px;font-size:12px" onclick="go('s-team')">Respond with the team →</button></div>
-      </div>`;
-    } else {
-      // AI unavailable / returned junk — render nothing. Pastoral content is
-      // never invented client-side. The team screen has its own retry path.
-      wpEl.innerHTML = '';
-    }
+    try {
+      const today=new Date().toISOString().slice(0,10);
+      const rows=await sbS('rf_devotions',{select:'scripture_ref,scripture_text,status', date:'eq.'+today});
+      const d=rows?.[0];
+      // Pastors see the verse only when the row is published. Bishop/admin
+      // see drafts too, so the missing-scripture case is visible to whoever
+      // can publish it.
+      if(d && d.scripture_text && (d.status==='published' || canManageDevotions())){
+        const isDraft = d.status !== 'published';
+        wpEl.innerHTML = `<div class="week-prompt">
+          <div class="week-label">📖 Scripture of the day${isDraft?' · <span style="color:var(--flame)">DRAFT</span>':''}</div>
+          <div class="week-question">"${esc(d.scripture_text)}"</div>
+          ${d.scripture_ref?`<em style="font-size:11px;color:var(--ash)">— ${esc(d.scripture_ref)}</em>`:''}
+        </div>`;
+      } else {
+        wpEl.innerHTML = '';
+      }
+    } catch(_){ wpEl.innerHTML = ''; }
   }
   // Load bishop broadcast messages (with audio, seen-by, reply)
   const blastsEl=$('home-blasts');
@@ -1452,58 +1479,14 @@ async function loadHome(){
       } else blastsEl.innerHTML='';
     } catch(e){ blastsEl.innerHTML=''; }
   }
-  renderHomeDevotion();
   renderHomeActiveFast();
   renderHomeUpcomingEvents();
 }
 
-// ── Home: today's devotion teaser card ──
-async function renderHomeDevotion(){
-  const el=$('home-devotion'); if(!el) return;
-  const today=new Date().toISOString().slice(0,10);
-  try {
-    // Bishop/admin: fetch the most recent draft OR today's so they always see
-    // SOMETHING to act on. Pastors: only today's published row.
-    const rows=await sbS('rf_devotions',{select:'date,theme,title,scripture_ref,scripture_text,audio_url,video_url,status', date:'eq.'+today});
-    const d = rows && rows[0];
-    if(!d){
-      // No row for today. Pastors see nothing; Bishop/admin get a nudge to
-      // generate one so the gap doesn't sit silently.
-      if(canManageDevotions()){
-        el.innerHTML=`<div style="margin-top:16px">
-          <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px dashed var(--gold);padding:14px;opacity:0.85">
-            <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.2px;font-weight:500;margin-bottom:6px">📖 Today's Word — Not yet generated</div>
-            <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);line-height:1.3">Tap to generate &amp; publish →</div>
-          </div>
-        </div>`;
-      } else {
-        el.innerHTML='';
-      }
-      return;
-    }
-    if(d.status !== 'published' && !canManageDevotions()){
-      // Pastor: still cooking, nothing visible.
-      el.innerHTML='';
-      return;
-    }
-    const isDraft = d.status !== 'published';
-    el.innerHTML=`<div style="margin-top:16px">
-      <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px solid var(--gold);padding:14px${isDraft?';background:rgba(201,168,76,0.04)':''}">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:18px">📖</span>
-          <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.2px;font-weight:500">Today's Word · ${esc(d.theme||'')}</div>
-          ${isDraft?'<span class="pill pill-gold" style="margin-left:auto">📝 Draft — needs review</span>':((d.audio_url||d.video_url)?'<span class="pill pill-gold" style="margin-left:auto">🎙 Bishop</span>':'')}
-        </div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost);line-height:1.3;margin-bottom:4px">${esc(d.title||'')}</div>
-        <div style="font-size:11px;color:var(--gold);font-style:italic">${esc(d.scripture_ref||'')}</div>
-        <div style="font-size:12px;color:var(--mist);margin-top:8px">${isDraft?'Tap to review & publish →':'Tap to read →'}</div>
-      </div>
-    </div>`;
-  } catch(e){ el.innerHTML=''; }
-}
-
-// Returns true for bishop or admin — both can view drafts. The existing
-// isBishop() at line ~2584 is bishop-only and shouldn't be redefined here.
+// Returns true for bishop or admin — both can view drafts of the devotion
+// (visible on the devotion screen + on the home scripture card when it's
+// today's row). The existing isBishop() at line ~2584 is bishop-only and
+// shouldn't be redefined here.
 function canManageDevotions(){ return ST.session?.role === 'bishop' || ST.session?.role === 'admin'; }
 
 // ── Full devotion screen ──
@@ -4311,7 +4294,6 @@ function renderPastor(){
         <div class="stat-box" onclick="comingSoon('Giving')"><div class="stat-num">💝</div><div class="stat-lbl">Giving</div></div>
         <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)"><div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div></div>
       </div>
-      <div id="home-devotion"></div>
       <div id="home-active-fast"></div>
       <div id="home-upcoming-events"></div>
       <div id="home-leadership" style="margin-bottom:16px">
