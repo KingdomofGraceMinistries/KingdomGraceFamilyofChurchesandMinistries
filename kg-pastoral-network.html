@@ -207,12 +207,6 @@ textarea.fin{resize:vertical;min-height:80px;}
 .bio-icon{width:44px;height:44px;border-radius:50%;background:var(--gold3);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
 .bio-label{font-size:14px;font-weight:500;color:var(--frost);}
 .bio-sub{font-size:11px;color:var(--mist);margin-top:2px;}
-.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0;}
-.pin-key{background:var(--ink3);border:0.5px solid var(--br);border-radius:var(--rm);aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500;color:var(--frost);cursor:pointer;transition:all 0.1s;font-family:'DM Sans',sans-serif;}
-.pin-key:active{background:var(--ink4);transform:scale(0.95);}
-.pin-dots{display:flex;gap:12px;justify-content:center;margin-bottom:8px;}
-.pin-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--br);transition:all 0.15s;}
-.pin-dot.filled{background:var(--gold);border-color:var(--gold);}
 .err{background:rgba(232,93,58,0.1);border:0.5px solid rgba(232,93,58,0.3);border-radius:var(--rs);padding:10px 14px;font-size:12px;color:var(--flame);margin-bottom:12px;display:none;}
 .ok-msg{background:rgba(74,140,106,0.1);border:0.5px solid rgba(74,140,106,0.3);border-radius:var(--rs);padding:10px 14px;font-size:12px;color:var(--thrive);margin-bottom:12px;display:none;}
 .offline-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(232,93,58,0.95);color:#fff;text-align:center;padding:6px 14px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;transform:translateY(-100%);transition:transform 0.3s ease;display:flex;align-items:center;justify-content:center;gap:8px;}
@@ -918,19 +912,17 @@ async function verifyBio(userId){
 // ============================================================
 // PIN
 // ============================================================
-let pinBuf='';
-function pinPress(v){
-  if(v==='del') pinBuf=pinBuf.slice(0,-1);
-  else if(pinBuf.length<6) pinBuf+=v;
-  document.querySelectorAll('.pin-dot').forEach((d,i)=>d.classList.toggle('filled',i<pinBuf.length));
-  if(pinBuf.length===6) setTimeout(submitPin,150);
-}
 async function submitPin(){
-  const pin=pinBuf; pinBuf='';
-  document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
+  const pinIn = $('pin-input');
+  const pin = (pinIn?.value || '').trim();
+  if(pinIn) pinIn.value = '';
   const email = ($('pin-email')?.value || '').trim().toLowerCase();
   if(!email){
     showErr('pin-err','Please enter your email.');
+    return;
+  }
+  if(!/^\d{4,8}$/.test(pin)){
+    showErr('pin-err','Enter a 4-8 digit PIN.');
     return;
   }
   try {
@@ -2351,8 +2343,8 @@ async function tryBioLogin(){
 }
 
 function showPinLogin(role){
-  ST.pinTarget=role; pinBuf='';
-  document.querySelectorAll('.pin-dot').forEach(d=>d.classList.remove('filled'));
+  ST.pinTarget=role;
+  const pinIn=$('pin-input'); if(pinIn) pinIn.value='';
   const mark=$('pin-mark'),title=$('pin-title'),sub=$('pin-sub'),emailIn=$('pin-email'),okMsg=$('pin-ok');
   if(mark){
     if(role==='bishop') mark.innerHTML=MITRE;
@@ -3708,14 +3700,12 @@ function renderPastor(){
     <div class="auth-mark" id="pin-mark">🔢</div>
     <div class="auth-title" id="pin-title">Enter PIN</div>
     <div class="auth-sub" id="pin-sub">Your 6-digit access code</div>
-    <input class="fin" id="pin-email" type="email" autocomplete="email" placeholder="email@example.com" style="margin-bottom:14px;width:100%;max-width:280px">
-    <div class="pin-dots">${'<div class="pin-dot"></div>'.repeat(6)}</div>
+    <input class="fin" id="pin-email" type="email" autocomplete="email" placeholder="email@example.com" style="margin-bottom:10px;width:100%;max-width:280px">
+    <input class="fin" id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN" onkeydown="if(event.key==='Enter') submitPin()" style="margin-bottom:8px;width:100%;max-width:280px;text-align:center;font-size:22px;letter-spacing:6px">
     <div class="err" id="pin-err"></div>
     <div class="ok-msg" id="pin-ok" style="display:none;margin-top:8px"></div>
-    <div class="pin-grid">
-      ${[1,2,3,4,5,6,7,8,9,'','0','del'].map(k=>k===''?'<div></div>':`<div class="pin-key" onclick="pinPress('${k}')">${k==='del'?'⌫':k}</div>`).join('')}
-    </div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;width:100%;max-width:280px">
+      <button class="fsub" onclick="submitPin()" style="width:100%">Sign In</button>
       <button class="tnav-btn" id="magic-link-btn" onclick="requestMagicLink()">Email me a magic link</button>
       <button class="tnav-btn" onclick="go('s-login')">← Back</button>
     </div>
