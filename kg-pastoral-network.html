@@ -2783,7 +2783,6 @@ async function archiveDevotion(id){
 
 async function uploadDevotionMedia(id, kind, file){
   if(!file) return;
-  // 50MB cap on uploads from the bishop dashboard.
   if(file.size > 50*1024*1024){ alert('File must be under 50MB.'); return; }
   try {
     const ext = (file.name.split('.').pop() || (kind==='video'?'mp4':'webm')).toLowerCase();
@@ -2794,6 +2793,86 @@ async function uploadDevotionMedia(id, kind, file){
     audit('DEVOTION_MEDIA_ATTACHED',{table:'rf_devotions', targetId:id, kind});
     loadBishopDevotion();
   } catch(e){ alert('Upload failed: '+(e.message||'unknown')); }
+}
+
+// ── BISHOP: Edit-devotion modal ─────────────────────────────
+async function openDevotionEditor(id){
+  try {
+    const rows = await sbS('rf_devotions',{select:'*', id:'eq.'+id});
+    const d = rows && rows[0];
+    if(!d){ alert('Devotion not found.'); return; }
+    const existing = document.getElementById('dev-editor-modal');
+    if(existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'dev-editor-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10002;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+    modal.innerHTML = `
+      <div style="background:var(--ink2);border:1px solid var(--gold);border-radius:var(--r);max-width:680px;width:100%;padding:22px;margin-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--gold)">Edit Today's Devotion</div>
+          <button class="pw-act" onclick="closeDevotionEditor()">✕</button>
+        </div>
+        <label class="flbl">Theme</label>
+        <input class="fin" id="edit-theme" value="${esc(d.theme||'')}">
+        <label class="flbl" style="margin-top:10px">Title</label>
+        <input class="fin" id="edit-title" value="${esc(d.title||'')}">
+        <label class="flbl" style="margin-top:10px">Scripture reference</label>
+        <input class="fin" id="edit-scripture-ref" value="${esc(d.scripture_ref||'')}" placeholder="e.g. Philippians 4:6-7">
+        <label class="flbl" style="margin-top:10px">Scripture text (NKJV)</label>
+        <textarea class="fin" id="edit-scripture-text" rows="3" style="resize:vertical">${esc(d.scripture_text||'')}</textarea>
+        <label class="flbl" style="margin-top:10px">Body</label>
+        <textarea class="fin" id="edit-body" rows="12" style="resize:vertical;line-height:1.55">${esc(d.body||'')}</textarea>
+        <label class="flbl" style="margin-top:10px">Reflection prompt</label>
+        <textarea class="fin" id="edit-reflection" rows="3" style="resize:vertical">${esc(d.reflection_prompt||'')}</textarea>
+        <label class="flbl" style="margin-top:10px">Prophetic call (stir-up)</label>
+        <textarea class="fin" id="edit-prophetic" rows="3" style="resize:vertical">${esc(d.prophetic_call||'')}</textarea>
+        <div class="err" id="edit-err" style="margin-top:10px"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <button class="fsub" style="flex:1;min-width:140px" onclick="saveDevotionEdits('${d.id}', false)">Save changes</button>
+          <button class="fsub" style="flex:1;min-width:140px;background:var(--sage);color:#fff" onclick="saveDevotionEdits('${d.id}', true)">Save & Publish</button>
+          <button class="pw-act" onclick="closeDevotionEditor()">Cancel</button>
+        </div>
+        <div style="font-size:11px;color:var(--ash);margin-top:10px">Saving flips the source to <strong>bishop</strong>. The AI draft is replaced by your edits.</div>
+      </div>`;
+    document.body.appendChild(modal);
+  } catch(e){ alert('Could not open editor: '+(e.message||'unknown')); }
+}
+
+function closeDevotionEditor(){
+  const m = document.getElementById('dev-editor-modal');
+  if(m) m.remove();
+}
+
+async function saveDevotionEdits(id, publishToo){
+  const theme       = ($('edit-theme')?.value || '').trim();
+  const title       = ($('edit-title')?.value || '').trim();
+  const scriptureRef= ($('edit-scripture-ref')?.value || '').trim();
+  const scriptureText=($('edit-scripture-text')?.value || '').trim();
+  const body        = ($('edit-body')?.value || '').trim();
+  const reflection  = ($('edit-reflection')?.value || '').trim();
+  const prophetic   = ($('edit-prophetic')?.value || '').trim();
+  if(!title || !body || !scriptureRef){
+    showErr('edit-err','Title, scripture reference, and body are required.');
+    return;
+  }
+  const patch = {
+    theme, title, scripture_ref: scriptureRef, scripture_text: scriptureText,
+    body, reflection_prompt: reflection, prophetic_call: prophetic,
+    source: 'bishop',
+  };
+  if(publishToo){
+    patch.status = 'published';
+    patch.published_at = new Date().toISOString();
+    patch.reviewed_by = ST.session?.userId || null;
+  }
+  try {
+    await sbU('rf_devotions','id=eq.'+id, patch);
+    audit(publishToo ? 'DEVOTION_EDITED_AND_PUBLISHED' : 'DEVOTION_EDITED', {table:'rf_devotions', targetId:id});
+    closeDevotionEditor();
+    loadBishopDevotion();
+  } catch(e){
+    showErr('edit-err','Could not save: '+(e.message||'unknown'));
+  }
 }
 
 async function loadBishopOverview(){

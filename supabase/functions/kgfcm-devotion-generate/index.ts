@@ -69,6 +69,11 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const targetDate = typeof body.date === "string" && body.date ? body.date : todayISO();
+    // The pg_cron job posts auto_publish:true so the day's devotion lands as
+    // status='published' the moment it passes the two-layer review (regex +
+    // Claude reviewer). Bishop UI calls without the flag and rows arrive as
+    // status='draft' for manual approve / regenerate / edit / replace.
+    const autoPublish = body.auto_publish === true;
 
     // Build "avoid" list from last 14 days
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -107,8 +112,9 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Could not generate an acceptable draft. Try again or write it manually." }, 502);
     }
 
-    // Upsert as draft. If a row already exists for the date, replace its AI fields
-    // but preserve audio_url/video_url + source if bishop has already overridden.
+    // Upsert. If a row already exists for the date, replace its AI fields
+    // but preserve audio_url/video_url if bishop has already attached media.
+    const finalStatus = autoPublish ? "published" : "draft";
     const upsert = await supa.from("rf_devotions")
       .upsert({
         date:              targetDate,
@@ -120,18 +126,21 @@ Deno.serve(async (req: Request) => {
         reflection_prompt: draft.reflection_prompt,
         prophetic_call:    draft.prophetic_call,
         source:            "ai",
-        status:            "draft",
+        status:            finalStatus,
+        reviewed_by:       autoPublish ? "cron-system" : null,
+        published_at:      autoPublish ? new Date().toISOString() : null,
         generation_metadata: {
           attempts,
           review,
           model: MODEL,
+          auto_published: autoPublish,
         },
       }, { onConflict: "date" })
       .select("id,date,theme,title,scripture_ref,scripture_text,body,reflection_prompt,prophetic_call,status,source")
       .single();
     if (upsert.error) throw upsert.error;
 
-    await audit(supa, "DEVOTION_DRAFT_CREATED", {
+    await audit(supa, autoPublish ? "DEVOTION_AUTO_PUBLISHED" : "DEVOTION_DRAFT_CREATED", {
       actor_id: actorId, ip_address: ip,
       target_table: "rf_devotions", target_id: upsert.data.id,
       theme: draft.theme, scripture_ref: draft.scripture_ref, attempts,

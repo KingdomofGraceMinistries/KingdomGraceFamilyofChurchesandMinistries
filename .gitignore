@@ -3,3 +3,9 @@
 
 # Deno
 deno.lock
+
+# One-off SQL scratchpads — never commit. PIN values, vault secrets, and
+# other operator-only payloads live here. Run them from Supabase SQL
+# Editor and either clear the file or leave it; it won't reach git.
+supabase/scratch/
+
