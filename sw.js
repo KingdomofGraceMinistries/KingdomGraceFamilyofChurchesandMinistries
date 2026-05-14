@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v12';
+const CACHE_NAME = 'kg-pastoral-v13';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -35,10 +35,19 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   const req = e.request;
 
-  // Supabase API calls — network-first, cache GET responses for offline reading
+  // Supabase API calls — network-first, cache GET responses for offline reading.
+  // Auth endpoints must NEVER be queued: a queued login returns 202 {queued:true}
+  // to the page, which the login code can't distinguish from a real session and
+  // would walk the user into a broken half-authenticated state. Errors here have
+  // to surface so the user retries.
   if (url.hostname.includes('supabase.co')) {
+    const isAuthEndpoint =
+      url.pathname.startsWith('/auth/v1/') ||
+      /^\/functions\/v1\/kgfcm-pin-(login|register|reset|reset-confirm)$/.test(url.pathname);
     if (req.method === 'GET') {
       e.respondWith(networkFirstThenCache(req));
+    } else if (isAuthEndpoint) {
+      e.respondWith(fetch(req));
     } else {
       e.respondWith(networkOrQueue(req));
     }
