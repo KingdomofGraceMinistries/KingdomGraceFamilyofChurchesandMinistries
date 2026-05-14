@@ -4775,9 +4775,27 @@ async function pollForNotifications(){
   } catch(e){ /* polling error — skip this cycle */ }
 }
 
+// iOS-aware PWA-install detection. Apple Web Push (iOS 16.4+) requires the
+// PWA to be installed to the Home Screen — `PushManager` exists in iOS Safari
+// only inside that standalone shell, not in a regular browser tab. Detect both
+// "iOS device" and "running standalone" so we can give pastors the right
+// guidance instead of silently failing the subscribe.
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+function isStandalonePWA(){
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches)
+      || navigator.standalone === true; // legacy iOS
+}
+
 // ── PUSH SUBSCRIPTION: register with push service + save to Supabase ──
 async function subscribeToPush(){
-  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+    // iOS Safari (NOT installed as PWA) does not expose PushManager at all on
+    // iOS 16.4+ — `PushManager` is only available inside the home-screen PWA.
+    // Surface that to the user instead of swallowing it silently.
+    if(IS_IOS && !isStandalonePWA()) showIosInstallHint();
+    return;
+  }
   if(!C.vapidPublicKey) return;
   try {
     const reg=await navigator.serviceWorker.ready;
@@ -4815,7 +4833,34 @@ async function subscribeToPush(){
         updated_at:new Date().toISOString()
       }).catch(()=>{});
     });
-  } catch(e){ /* push subscription not available */ }
+    audit('PUSH_SUBSCRIBED',{endpoint_host: (subJson.endpoint||'').split('/')[2] || 'unknown'});
+  } catch(e){
+    // Subscribe can throw on iOS PWA if user denies, on Android if the device
+    // has no Play Services, or if the push service rejects the VAPID key.
+    // Route the failure through audit so we can debug in rf_audit_log without
+    // a console.* call.
+    audit('PUSH_SUBSCRIBE_FAILED',{message: (e && e.message) ? e.message.slice(0,200) : 'unknown', ios: IS_IOS, standalone: isStandalonePWA()});
+  }
+}
+
+// Render a one-time, dismissible hint asking iOS users to install the PWA to
+// the home screen so push works. Idempotent: the element is built once and
+// reused; subsequent calls just re-show it.
+function showIosInstallHint(){
+  if(document.getElementById('ios-install-hint')) {
+    document.getElementById('ios-install-hint').style.display='flex';
+    return;
+  }
+  const hint=document.createElement('div');
+  hint.id='ios-install-hint';
+  hint.style.cssText='position:fixed;left:12px;right:12px;bottom:80px;z-index:10000;background:var(--ink2);border:1px solid var(--gold);border-radius:var(--rm);padding:14px 16px;color:var(--frost);font-size:13px;line-height:1.5;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:"DM Sans",sans-serif';
+  hint.innerHTML = `
+    <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold)">📲 Enable notifications</div>
+    <div>Tap the <strong style="color:var(--gold)">Share</strong> button in Safari, then <strong style="color:var(--gold)">Add to Home Screen</strong>. Open the app from your home screen and notifications will turn on.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="tnav-btn" onclick="document.getElementById('ios-install-hint').remove()">Got it</button>
+    </div>`;
+  document.body.appendChild(hint);
 }
 
 // ── FIRE PUSH NOTIFY: call Edge Function when content is created ──
@@ -4913,8 +4958,13 @@ if('serviceWorker' in navigator){
   // Listen for messages from service worker
   navigator.serviceWorker.addEventListener('message',e=>{
     if(e.data.type==='QUEUED_OFFLINE'){
-      // Data was saved offline — show confirmation
-      offlineBar.classList.add('show');
+      // The SW only queues when it believes we're offline, but defend in depth:
+      // ignore the message entirely if the browser knows we're online. This
+      // prevents a stuck "No connection" banner when the queue path fires for
+      // a transient non-network failure (CORS edge case, TLS reset, etc.).
+      if(navigator.onLine === false){
+        offlineBar.classList.add('show');
+      }
     }
     if(e.data.type==='SYNC_COMPLETE'){
       if(e.data.synced>0){
@@ -4927,6 +4977,16 @@ if('serviceWorker' in navigator){
     }
   });
 }
+
+// Self-heal the offline banner: any time the page becomes visible AND the
+// browser reports we're online, the banner shouldn't be showing. Catches the
+// case where an older SW left QUEUED_OFFLINE messages behind during a CORS or
+// TLS hiccup and the bar got stuck.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && navigator.onLine !== false){
+    offlineBar.classList.remove('show');
+  }
+});
 
 function showOnlineToast(msg){
   onlineToast.textContent='\u2713 '+msg;

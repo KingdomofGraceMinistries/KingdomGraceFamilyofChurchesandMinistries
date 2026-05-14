@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v20';
+const CACHE_NAME = 'kg-pastoral-v21';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -142,13 +142,20 @@ async function networkOrQueue(request) {
     : '';
   try {
     return await fetch(request);
-  } catch {
-    // Offline / CORS-rejected / network — store the mutation in IndexedDB
-    // for later sync. SEC-10: ensure every queued mutation carries an
-    // Idempotency-Key so a replay after a half-completed earlier attempt is
-    // dedupable. The HTML layer adds one on every mutation, but we double-
-    // defend here in case a request slipped through from a different code
-    // path.
+  } catch (err) {
+    // fetch() throws TypeError on a range of conditions: genuinely offline,
+    // CORS preflight rejection, captive portal, TLS failure, browser
+    // extension block, etc. Only the FIRST of those is the offline-queue
+    // use case. Posting QUEUED_OFFLINE for the others wrongly flashes the
+    // "No connection" banner at users who are clearly online — and worse,
+    // queues a request the server has already (correctly) refused.
+    //
+    // Heuristic: if the browser believes we're online, this is NOT a queue
+    // situation. Re-throw and let the page-side fetch() handler surface a
+    // real error.
+    if (self.navigator && self.navigator.onLine !== false) {
+      throw err;
+    }
     const headers = Object.fromEntries(request.headers.entries());
     if (!headers['Idempotency-Key'] && !headers['idempotency-key']) {
       headers['Idempotency-Key'] = (self.crypto && self.crypto.randomUUID)
