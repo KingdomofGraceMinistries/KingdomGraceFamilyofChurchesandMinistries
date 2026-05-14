@@ -596,7 +596,7 @@ const avHTML = (url,name,size=36) => url
 // the migration revokes those grants from authenticated; only service_role
 // reads them via edge functions. Use this constant for every rf_pastors
 // SELECT call so we never accidentally request a forbidden column.
-const PASTOR_COLS = 'id,email,full_name,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,avatar_url,status,last_checkin_at,last_pulse_score,posts_this_week,created_at,credential_type,ordination_date,ordained_by,covering_under,credential_status,role,auth_user_id';
+const PASTOR_COLS = 'id,email,full_name,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,avatar_url,status,last_checkin_at,last_pulse_score,posts_this_week,created_at,credential_type,ordination_date,ordained_by,covering_under,credential_status,role,auth_user_id,credential_doc_path,credential_doc_uploaded_at';
 
 // Edge function names. Deployed without --no-verify-jwt; they accept the
 // publishable key as Authorization and apply their own rate limit + audit.
@@ -791,6 +791,60 @@ async function storageUpload(bucket, path, file){
   });
   if(!r.ok) throw new Error('Upload failed: '+r.status);
   return `${C.supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+// Upload to a private (non-public) bucket. The bucket has no
+// /object/public/ surface, so we return ONLY the storage path. The
+// caller is responsible for generating a short-lived signed URL via
+// signedUrl(bucket, path) when it's time to fetch the file.
+async function storageUploadPrivate(bucket, path, file){
+  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
+    method:'POST',
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':file.type,'x-upsert':'true'},
+    body:file
+  });
+  if(!r.ok) throw new Error('Upload failed: '+r.status);
+  return path;
+}
+
+// Generate a short-lived signed URL for a private bucket object. The
+// caller's JWT decides whether they may access this path (storage RLS),
+// so this never produces a URL the JWT couldn't have read directly.
+async function signedUrl(bucket, path, expiresIn=300){
+  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/sign/${bucket}/${path}`,{
+    method:'POST',
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
+    body:JSON.stringify({expiresIn})
+  });
+  if(!r.ok) throw new Error('Could not generate signed URL: '+r.status);
+  const data=await r.json();
+  const rel = data.signedURL || data.signedUrl || '';
+  return rel ? `${C.supabaseUrl}/storage/v1${rel}` : '';
+}
+
+// List objects in a private bucket folder. Used to render the
+// ministry-photos gallery for the logged-in pastor's own uploads
+// without leaking other folders' contents to the response (RLS still
+// gates which entries are returned).
+async function listPrivateFolder(bucket, prefix, limit=100){
+  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/list/${bucket}`,{
+    method:'POST',
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
+    body:JSON.stringify({prefix, limit, sortBy:{column:'created_at', order:'desc'}})
+  });
+  if(!r.ok) throw new Error('List failed: '+r.status);
+  return r.json();
+}
+
+async function storageDelete(bucket, paths){
+  const list = Array.isArray(paths) ? paths : [paths];
+  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}`,{
+    method:'DELETE',
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
+    body:JSON.stringify({prefixes:list})
+  });
+  if(!r.ok) throw new Error('Delete failed: '+r.status);
+  return r.json();
 }
 
 // ── AUDIT LOGGER ──
@@ -1410,12 +1464,13 @@ async function loadPastorView(id){
         ${p.city?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${esc(p.city)}</div>`:''}
         ${p.years_in_ministry?`<div style="font-size:10px;color:var(--ash);margin-top:6px;text-transform:uppercase;letter-spacing:1.2px">${p.years_in_ministry} ${p.years_in_ministry==1?'year':'years'} in ministry</div>`:''}
       </div>
-      ${(p.credential_type||p.ordained_by||p.covering_under)?`<div class="pw-item" style="margin-bottom:12px;border-left:2px solid var(--gold)">
+      ${(p.credential_type||p.ordained_by||p.covering_under||p.credential_doc_path)?`<div class="pw-item" style="margin-bottom:12px;border-left:2px solid var(--gold)">
         <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Credentials</div>
         ${p.credential_type?`<div style="font-size:13px;color:var(--frost);margin-bottom:4px"><strong style="color:var(--gold)">${esc(p.credential_type)}</strong></div>`:''}
         ${p.ordination_date?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">Ordained ${esc(p.ordination_date)}</div>`:''}
         ${p.ordained_by?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">By ${esc(p.ordained_by)}</div>`:''}
-        ${p.covering_under?`<div style="font-size:12px;color:var(--mist)">Covering: ${esc(p.covering_under)}</div>`:''}
+        ${p.covering_under?`<div style="font-size:12px;color:var(--mist);margin-bottom:6px">Covering: ${esc(p.covering_under)}</div>`:''}
+        ${p.credential_doc_path?`<button class="pw-act" onclick="viewPastorCredential('${esc(p.credential_doc_path)}')" style="margin-top:6px">📄 View credential scan${p.credential_doc_uploaded_at?` (${new Date(p.credential_doc_uploaded_at).toLocaleDateString()})`:''}</button>`:''}
       </div>`:''}
       ${p.bio?`<div class="pw-item" style="margin-bottom:12px">
         <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">About</div>
@@ -1895,6 +1950,8 @@ function loadProfile(){
   document.querySelectorAll('.gift-chip').forEach(c=>c.classList.toggle('on',gifts.includes(c.dataset.gift)));
   const wrap=$('av-wrap');
   if(wrap&&p.avatar_url) wrap.innerHTML=`<img src="${esc(p.avatar_url)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" onclick="$('av-file').click()">`;
+  renderCredentialDocStatus();
+  loadMinistryPhotoGrid();
 }
 
 // ============================================================
@@ -2182,6 +2239,121 @@ async function saveProfile(){
     showOk('prof-ok','Profile saved.');
   } catch(e){showErr('prof-err','Could not save profile.');}
   btn.disabled=false; btn.textContent='Save profile →';
+}
+
+// ── CREDENTIAL DOC UPLOAD (private bucket) ─────────────────────────
+async function uploadCredentialDoc(input){
+  const file = input?.files?.[0]; if(!file) return;
+  if(file.size > 20*1024*1024){ showErr('prof-err','Credential file must be under 20MB.'); input.value=''; return; }
+  const authId = ST.session?.authUserId;
+  if(!authId){ showErr('prof-err','Sign back in to upload.'); input.value=''; return; }
+  const status = $('prof-cred-status'); if(status) status.textContent='Uploading…';
+  try {
+    const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+    const path = `${authId}/credential-${Date.now()}.${ext}`;
+    await storageUploadPrivate('credentials', path, file);
+    const nowIso = new Date().toISOString();
+    await sbU('rf_pastors','id=eq.'+ST.session.userId,{credential_doc_path:path, credential_doc_uploaded_at:nowIso});
+    ST.profile = {...ST.profile, credential_doc_path:path, credential_doc_uploaded_at:nowIso};
+    saveLocal('profile', ST.profile);
+    audit('CREDENTIAL_DOC_UPLOADED',{table:'rf_pastors', targetId:ST.session.userId});
+    renderCredentialDocStatus();
+    showOk('prof-ok','Credential saved.');
+  } catch(e){
+    showErr('prof-err','Could not upload credential: '+(e.message||'unknown'));
+    if(status) status.textContent='No document uploaded.';
+  }
+  input.value='';
+}
+
+function renderCredentialDocStatus(){
+  const status = $('prof-cred-status'); const viewBtn = $('prof-cred-view');
+  const path = ST.profile?.credential_doc_path;
+  if(path){
+    const ts = ST.profile?.credential_doc_uploaded_at;
+    const when = ts ? new Date(ts).toLocaleDateString() : '';
+    if(status) status.textContent = '📄 On file' + (when ? ' (uploaded '+when+')' : '');
+    if(viewBtn) viewBtn.style.display='';
+  } else {
+    if(status) status.textContent='No document uploaded.';
+    if(viewBtn) viewBtn.style.display='none';
+  }
+}
+
+async function viewCredentialDoc(){
+  const path = ST.profile?.credential_doc_path;
+  if(!path){ showErr('prof-err','No credential on file.'); return; }
+  try {
+    const url = await signedUrl('credentials', path, 300);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+  } catch(e){
+    showErr('prof-err','Could not open: '+(e.message||'unknown'));
+  }
+}
+
+// ── MINISTRY PHOTOS (private bucket, network-readable) ──────────────
+async function uploadMinistryPhotos(input){
+  const files = Array.from(input?.files||[]); if(!files.length) return;
+  const authId = ST.session?.authUserId;
+  if(!authId){ showErr('prof-err','Sign back in to upload.'); input.value=''; return; }
+  for(const file of files){
+    if(file.size > 10*1024*1024){ showErr('prof-err','Each photo must be under 10MB. Skipping '+file.name); continue; }
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${authId}/photo-${Date.now()}-${Math.floor(Math.random()*1000)}.${ext}`;
+      await storageUploadPrivate('ministry-photos', path, file);
+      audit('MINISTRY_PHOTO_UPLOADED',{path});
+    } catch(e){
+      showErr('prof-err','Could not upload '+file.name+': '+(e.message||'unknown'));
+    }
+  }
+  input.value='';
+  await loadMinistryPhotoGrid();
+}
+
+async function loadMinistryPhotoGrid(){
+  const grid = $('prof-photo-grid'); if(!grid) return;
+  const authId = ST.session?.authUserId; if(!authId){ grid.innerHTML=''; return; }
+  try {
+    const items = await listPrivateFolder('ministry-photos', authId+'/');
+    if(!items?.length){ grid.innerHTML='<div style="grid-column:1/-1;font-size:11px;color:var(--ash);text-align:center;padding:18px 0">No photos yet — add your first above.</div>'; return; }
+    const tiles = await Promise.all(items.map(async (it) => {
+      try {
+        const url = await signedUrl('ministry-photos', authId+'/'+it.name, 600);
+        const safe = esc(authId+'/'+it.name);
+        return `<div style="position:relative;aspect-ratio:1;border-radius:var(--rs);overflow:hidden;border:0.5px solid var(--br)">
+          <img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover;cursor:pointer" onclick="window.open('${esc(url)}','_blank','noopener,noreferrer')" alt="Ministry photo">
+          <button class="pw-act danger" onclick="deleteMinistryPhoto('${safe}')" style="position:absolute;top:4px;right:4px;padding:4px 6px;font-size:10px">×</button>
+        </div>`;
+      } catch(_){ return ''; }
+    }));
+    grid.innerHTML = tiles.filter(Boolean).join('');
+  } catch(e){ grid.innerHTML='<div style="grid-column:1/-1;font-size:11px;color:var(--flame);text-align:center;padding:18px 0">Could not load photos.</div>'; }
+}
+
+async function deleteMinistryPhoto(path){
+  if(!confirm('Delete this photo?')) return;
+  try {
+    await storageDelete('ministry-photos', path);
+    audit('MINISTRY_PHOTO_DELETED',{path});
+    await loadMinistryPhotoGrid();
+  } catch(e){
+    showErr('prof-err','Could not delete: '+(e.message||'unknown'));
+  }
+}
+
+// Bishop / admin opens a pastor's credential scan from the pastor-view
+// screen. RLS lets is_bishop() read the credentials bucket; the signed
+// URL is short-lived so it can't be shared after the bishop session
+// ends.
+async function viewPastorCredential(path){
+  try {
+    const url = await signedUrl('credentials', path, 300);
+    if(url) window.open(url, '_blank', 'noopener,noreferrer');
+    audit('CREDENTIAL_DOC_VIEWED',{path});
+  } catch(e){
+    alert('Could not open credential: '+(e.message||'unknown'));
+  }
 }
 
 async function sendDM(){
@@ -4131,6 +4303,21 @@ function renderPastor(){
       </div>
       <label class="flbl">Ordained by</label><input class="fin" id="prof-ordainedBy" placeholder="e.g. Bishop Peter Sasser">
       <label class="flbl">Spiritual covering</label><input class="fin" id="prof-covering" placeholder="Who do you serve under?">
+
+      <label class="flbl" style="margin-top:14px">Credential scan (private — Bishop & admins only)</label>
+      <input type="file" id="prof-cred-file" accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,application/pdf,image/*" style="display:none" onchange="uploadCredentialDoc(this)">
+      <div id="prof-cred-status" style="font-size:12px;color:var(--mist);margin-bottom:8px">No document uploaded.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="tnav-btn" type="button" onclick="$('prof-cred-file').click()" style="flex:1;min-width:120px">📎 Upload credential</button>
+        <button class="tnav-btn" type="button" id="prof-cred-view" onclick="viewCredentialDoc()" style="flex:1;min-width:120px;display:none">👁 View</button>
+      </div>
+
+      <div style="margin:14px 0 6px;font-size:10px;color:var(--gold);letter-spacing:1.2px;text-transform:uppercase;font-family:'Cormorant Garamond',serif">Ministry photos</div>
+      <div style="font-size:11px;color:var(--ash);margin-bottom:8px">Photos of your church, events, milestones. Visible to other pastors in the network. Bishop & admins can moderate.</div>
+      <input type="file" id="prof-photo-file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" multiple style="display:none" onchange="uploadMinistryPhotos(this)">
+      <button class="tnav-btn" type="button" onclick="$('prof-photo-file').click()" style="width:100%;margin-bottom:10px">📷 Add ministry photo</button>
+      <div id="prof-photo-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin-bottom:14px"></div>
+
       <label class="flbl">Personal Testimony / Bio</label><textarea class="fin" id="prof-bio" placeholder="Share your story..."></textarea>
       <label class="flbl">Current Public Prayer Focus</label><textarea class="fin" id="prof-prayerFocus" placeholder="What are you interceding for?"></textarea>
       <label class="flbl">What I'm Believing God For</label><textarea class="fin" id="prof-believing" placeholder="Your faith declaration..."></textarea>
