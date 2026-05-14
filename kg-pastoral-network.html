@@ -917,16 +917,35 @@ async function runBurnoutCheck(){
 // ============================================================
 // AI CONTENT
 // ============================================================
+const WP_FALLBACK = {
+  prompt:    "What is the hardest thing God is currently asking you to trust Him with in your ministry?",
+  scripture: "Trust in the Lord with all your heart and lean not on your own understanding.",
+  ref:       "Proverbs 3:5",
+  theme:     "Radical Trust"
+};
+function isValidWeekPrompt(d){
+  return d && typeof d==='object'
+    && typeof d.prompt==='string'    && d.prompt.trim().length > 0
+    && typeof d.scripture==='string' && d.scripture.trim().length > 0
+    && typeof d.ref==='string'       && d.ref.trim().length > 0
+    && typeof d.theme==='string'     && d.theme.trim().length > 0;
+}
 async function getWeekPrompt(){
   const wk = weekNum();
   const cached = loadLocal('wp_'+wk);
-  if(cached){ ST.weekPrompt=cached; return cached; }
+  // Defensive: an earlier malformed AI response could have poisoned the cache
+  // with an empty or partial object. Only honor the cache if it has all four
+  // expected keys filled in — otherwise re-fetch.
+  if(isValidWeekPrompt(cached)){ ST.weekPrompt=cached; return cached; }
   try {
     const raw = await aiCall(`Generate a weekly ministry team devotional discussion prompt for the ${C.networkName} pastoral network. Week ${wk} of the year. Make it personal, faith-stretching, and community-building. Anchor in scripture. JSON: {"prompt":"...","scripture":"...","ref":"...","theme":"..."}`,'team');
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    if(!isValidWeekPrompt(d)) throw new Error('AI returned an incomplete week prompt');
     saveLocal('wp_'+wk,d); ST.weekPrompt=d; return d;
   } catch(e){
-    return {prompt:"What is the hardest thing God is currently asking you to trust Him with in your ministry?",scripture:"Trust in the Lord with all your heart and lean not on your own understanding.",ref:"Proverbs 3:5",theme:"Radical Trust"};
+    // Hardcoded fallback so the home screen NEVER renders an empty box — every
+    // pastor at least sees a meaningful weekly question.
+    return WP_FALLBACK;
   }
 }
 
@@ -1195,19 +1214,41 @@ async function renderHomeDevotion(){
   const el=$('home-devotion'); if(!el) return;
   const today=new Date().toISOString().slice(0,10);
   try {
+    // Bishop/admin: fetch the most recent draft OR today's so they always see
+    // SOMETHING to act on. Pastors: only today's published row.
     const rows=await sbS('rf_devotions',{select:'date,theme,title,scripture_ref,scripture_text,audio_url,video_url,status', date:'eq.'+today});
     const d = rows && rows[0];
-    if(!d || (d.status !== 'published' && !canManageDevotions())){ el.innerHTML=''; return; }
+    if(!d){
+      // No row for today. Pastors see nothing; Bishop/admin get a nudge to
+      // generate one so the gap doesn't sit silently.
+      if(canManageDevotions()){
+        el.innerHTML=`<div style="margin-top:16px">
+          <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px dashed var(--gold);padding:14px;opacity:0.85">
+            <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.2px;font-weight:500;margin-bottom:6px">📖 Today's Word — Not yet generated</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--frost);line-height:1.3">Tap to generate &amp; publish →</div>
+          </div>
+        </div>`;
+      } else {
+        el.innerHTML='';
+      }
+      return;
+    }
+    if(d.status !== 'published' && !canManageDevotions()){
+      // Pastor: still cooking, nothing visible.
+      el.innerHTML='';
+      return;
+    }
+    const isDraft = d.status !== 'published';
     el.innerHTML=`<div style="margin-top:16px">
-      <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px solid var(--gold);padding:14px">
+      <div class="card" onclick="go('s-devotion')" style="cursor:pointer;border-left:2px solid var(--gold);padding:14px${isDraft?';background:rgba(201,168,76,0.04)':''}">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="font-size:18px">📖</span>
           <div style="font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.2px;font-weight:500">Today's Word · ${esc(d.theme||'')}</div>
-          ${(d.audio_url||d.video_url)?'<span class="pill pill-gold" style="margin-left:auto">🎙 Bishop</span>':''}
+          ${isDraft?'<span class="pill pill-gold" style="margin-left:auto">📝 Draft — needs review</span>':((d.audio_url||d.video_url)?'<span class="pill pill-gold" style="margin-left:auto">🎙 Bishop</span>':'')}
         </div>
         <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--frost);line-height:1.3;margin-bottom:4px">${esc(d.title||'')}</div>
         <div style="font-size:11px;color:var(--gold);font-style:italic">${esc(d.scripture_ref||'')}</div>
-        <div style="font-size:12px;color:var(--mist);margin-top:8px">Tap to read →</div>
+        <div style="font-size:12px;color:var(--mist);margin-top:8px">${isDraft?'Tap to review & publish →':'Tap to read →'}</div>
       </div>
     </div>`;
   } catch(e){ el.innerHTML=''; }
