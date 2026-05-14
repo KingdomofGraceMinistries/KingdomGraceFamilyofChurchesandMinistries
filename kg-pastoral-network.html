@@ -917,12 +917,6 @@ async function runBurnoutCheck(){
 // ============================================================
 // AI CONTENT
 // ============================================================
-const WP_FALLBACK = {
-  prompt:    "What is the hardest thing God is currently asking you to trust Him with in your ministry?",
-  scripture: "Trust in the Lord with all your heart and lean not on your own understanding.",
-  ref:       "Proverbs 3:5",
-  theme:     "Radical Trust"
-};
 function isValidWeekPrompt(d){
   return d && typeof d==='object'
     && typeof d.prompt==='string'    && d.prompt.trim().length > 0
@@ -943,22 +937,31 @@ async function getWeekPrompt(){
     if(!isValidWeekPrompt(d)) throw new Error('AI returned an incomplete week prompt');
     saveLocal('wp_'+wk,d); ST.weekPrompt=d; return d;
   } catch(e){
-    // Hardcoded fallback so the home screen NEVER renders an empty box — every
-    // pastor at least sees a meaningful weekly question.
-    return WP_FALLBACK;
+    // No fallback — theological content must never be hardcoded in a pastoral
+    // app. Returning null lets the caller render a neutral "unavailable"
+    // state instead of inventing scripture.
+    return null;
   }
 }
 
 async function getMonthChallenge(){
   const mo=new Date().toISOString().slice(0,7);
   const cached=loadLocal('mc_'+mo);
-  if(cached){ ST.monthChallenge=cached; return cached; }
+  const isValidChallenge = (d) => d && typeof d==='object'
+    && typeof d.title==='string'  && d.title.trim().length > 0
+    && typeof d.goal==='string'   && d.goal.trim().length > 0
+    && typeof d.scripture==='string' && d.scripture.trim().length > 0
+    && typeof d.ref==='string'    && d.ref.trim().length > 0;
+  if(isValidChallenge(cached)){ ST.monthChallenge=cached; return cached; }
   try {
     const raw=await aiCall(`Generate a monthly ministry team challenge for ${monthStr()} for the ${C.networkName} network of pastors. Actionable, measurable, spiritually significant — something each pastor can do in their own context. JSON: {"title":"...","goal":"...","action":"...","scripture":"...","ref":"..."}`,'team');
     const d=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    if(!isValidChallenge(d)) throw new Error('AI returned an incomplete monthly challenge');
     saveLocal('mc_'+mo,d); ST.monthChallenge=d; return d;
   } catch(e){
-    return {title:"Reach One",goal:"Personally reach one person outside your church this month",action:"A handwritten note, phone call, or personal visit to someone who needs a pastoral touch",scripture:"Go and make disciples of all nations",ref:"Matthew 28:19"};
+    // No hardcoded fallback — theological content must never be invented by
+    // the app. Caller renders a neutral "unavailable" state instead.
+    return null;
   }
 }
 
@@ -1162,12 +1165,20 @@ async function loadHome(){
   runBurnoutCheck();
   const wp=await getWeekPrompt();
   const wpEl=$('home-wp');
-  if(wpEl&&wp) wpEl.innerHTML=`<div class="week-prompt">
-    <div class="week-label">🕯️ Week ${weekNum()} · ${esc(wp.theme)}</div>
-    <div class="week-question">"${esc(wp.prompt)}"</div>
-    <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
-    <div style="margin-top:12px"><button class="fsub" style="padding:9px;font-size:12px" onclick="go('s-team')">Respond with the team →</button></div>
-  </div>`;
+  if(wpEl){
+    if(wp){
+      wpEl.innerHTML = `<div class="week-prompt">
+        <div class="week-label">🕯️ Week ${weekNum()} · ${esc(wp.theme)}</div>
+        <div class="week-question">"${esc(wp.prompt)}"</div>
+        <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
+        <div style="margin-top:12px"><button class="fsub" style="padding:9px;font-size:12px" onclick="go('s-team')">Respond with the team →</button></div>
+      </div>`;
+    } else {
+      // AI unavailable / returned junk — render nothing. Pastoral content is
+      // never invented client-side. The team screen has its own retry path.
+      wpEl.innerHTML = '';
+    }
+  }
   // Load bishop broadcast messages (with audio, seen-by, reply)
   const blastsEl=$('home-blasts');
   if(blastsEl){
@@ -1351,18 +1362,24 @@ async function loadTeam(){
   const wp=await getWeekPrompt();
   const mc=await getMonthChallenge();
   const whEl=$('team-wp-header');
-  if(whEl&&wp) whEl.innerHTML=`<div class="week-prompt" style="margin-bottom:0">
-    <div class="week-label">📅 Week ${weekNum()} · ${esc(wp.theme)}</div>
-    <div class="week-question">"${esc(wp.prompt)}"</div>
-    <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
-  </div>`;
+  // If AI didn't return a valid prompt, render nothing rather than a styled
+  // empty box. No hardcoded fallback — theological content is never invented.
+  if(whEl){
+    whEl.innerHTML = wp ? `<div class="week-prompt" style="margin-bottom:0">
+      <div class="week-label">📅 Week ${weekNum()} · ${esc(wp.theme)}</div>
+      <div class="week-question">"${esc(wp.prompt)}"</div>
+      <em style="font-size:11px;color:var(--ash)">${esc(wp.scripture)} — ${esc(wp.ref)}</em>
+    </div>` : '';
+  }
   const mcEl=$('team-mc');
-  if(mcEl&&mc) mcEl.innerHTML=`<div class="challenge-card">
-    <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--info2);margin-bottom:5px">🎯 ${monthStr()}</div>
-    <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost);margin-bottom:4px">${esc(mc.title)}</div>
-    <div style="font-size:13px;color:var(--mist);margin-bottom:6px">${esc(mc.goal)}</div>
-    <em style="font-size:11px;color:var(--ash)">"${esc(mc.scripture)}" — ${esc(mc.ref)}</em>
-  </div>`;
+  if(mcEl){
+    mcEl.innerHTML = mc ? `<div class="challenge-card">
+      <div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--info2);margin-bottom:5px">🎯 ${monthStr()}</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:var(--frost);margin-bottom:4px">${esc(mc.title)}</div>
+      <div style="font-size:13px;color:var(--mist);margin-bottom:6px">${esc(mc.goal)}</div>
+      <em style="font-size:11px;color:var(--ash)">"${esc(mc.scripture)}" — ${esc(mc.ref)}</em>
+    </div>` : '';
+  }
   const list=$('team-responses');
   if(!list) return;
   list.innerHTML=loading();
