@@ -2,7 +2,7 @@
 //   cd supabase/functions && deno test --allow-env --no-check _shared/test_shared.ts
 // (--no-check skips remote import type resolution; logic is still checked.)
 
-import { assert, assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertMatch } from "jsr:@std/assert@^1.0.19";
 import { hashIdentifier } from "./audit.ts";
 import { generateCode, hashCode, padTo } from "./rate_limit.ts";
 
