@@ -440,8 +440,14 @@ async function loadConfig(){
     // Manifest theme color comes from the default theme's --ink (background)
     const defaultPalette = C.themes?.options?.find(o=>o.id===C.themes.default)?.palette;
     const manifestColor = defaultPalette?.ink || '#0a0a0f';
-    const manifest={name:C.networkShort+' — Pastoral Network',short_name:C.networkShort,description:'Pastoral care and network oversight for '+C.networkName,start_url:'/',display:'standalone',orientation:'portrait',background_color:manifestColor,theme_color:manifestColor,icons:[{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'any'},{src:C.logoUrl,sizes:'843x843',type:'image/jpeg',purpose:'maskable'},{src:'/icons/icon-192.svg',sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:'/icons/icon-512.svg',sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
-    const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+    // Manifest properties whose values are URLs (start_url, icons[].src) must
+    // be absolute when the manifest is served from a blob: URL, because
+    // relative paths resolve against the blob: origin (which is sandboxed) and
+    // get dropped by Chrome with "URL is invalid" warnings.
+    const base = location.origin;
+    const toAbs = (path) => /^https?:/.test(path) ? path : (base + (path.startsWith('/') ? path : '/' + path));
+    const manifest={name:C.networkShort+' — Pastoral Network',short_name:C.networkShort,description:'Pastoral care and network oversight for '+C.networkName,start_url:base+'/',display:'standalone',orientation:'portrait',background_color:manifestColor,theme_color:manifestColor,icons:[{src:toAbs(C.logoUrl),sizes:'843x843',type:'image/jpeg',purpose:'any'},{src:toAbs(C.logoUrl),sizes:'843x843',type:'image/jpeg',purpose:'maskable'},{src:base+'/icons/icon-192.svg',sizes:'192x192',type:'image/svg+xml',purpose:'any'},{src:base+'/icons/icon-512.svg',sizes:'512x512',type:'image/svg+xml',purpose:'any'}]};
+    const blob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
     const manifestLink=document.querySelector('link[rel="manifest"]');
     if(manifestLink) manifestLink.href=URL.createObjectURL(blob);
   } catch(e){ /* offline — use cached or defaults */ }
@@ -3721,15 +3727,17 @@ function renderPastor(){
     <div class="auth-mark" id="pin-mark">🔢</div>
     <div class="auth-title" id="pin-title">Enter PIN</div>
     <div class="auth-sub" id="pin-sub">Your 6-digit access code</div>
-    <input class="fin" id="pin-email" type="email" autocomplete="email" placeholder="email@example.com" style="margin-bottom:10px;width:100%;max-width:280px">
-    <input class="fin" id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN" onkeydown="if(event.key==='Enter') submitPin()" style="margin-bottom:8px;width:100%;max-width:280px;text-align:center;font-size:22px;letter-spacing:6px">
-    <div class="err" id="pin-err"></div>
-    <div class="ok-msg" id="pin-ok" style="display:none;margin-top:8px"></div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;width:100%;max-width:280px">
-      <button class="fsub" onclick="submitPin()" style="width:100%">Sign In</button>
-      <button class="tnav-btn" id="magic-link-btn" onclick="requestMagicLink()">Email me a magic link</button>
-      <button class="tnav-btn" onclick="go('s-login')">← Back</button>
-    </div>
+    <form id="pin-form" onsubmit="event.preventDefault(); submitPin();" autocomplete="on" style="width:100%;max-width:280px;display:flex;flex-direction:column;align-items:center">
+      <input class="fin" id="pin-email" name="email" type="email" autocomplete="username" placeholder="email@example.com" style="margin-bottom:10px;width:100%">
+      <input class="fin" id="pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN" style="margin-bottom:8px;width:100%;text-align:center;font-size:22px;letter-spacing:6px">
+      <div class="err" id="pin-err" style="width:100%"></div>
+      <div class="ok-msg" id="pin-ok" style="display:none;margin-top:8px;width:100%"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;width:100%">
+        <button class="fsub" type="submit" style="width:100%">Sign In</button>
+        <button class="tnav-btn" id="magic-link-btn" type="button" onclick="requestMagicLink()">Email me a magic link</button>
+        <button class="tnav-btn" type="button" onclick="go('s-login')">← Back</button>
+      </div>
+    </form>
     <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">Forgot your PIN? <span style="color:var(--gold);cursor:pointer" onclick="requestMagicLink()">Email me a magic link →</span></div>
   </div>
 </div>
