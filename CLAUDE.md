@@ -2,6 +2,19 @@
 
 ---
 
+## ⚠️ MANDATORY READING ORDER — DO THIS BEFORE TOUCHING ANY FILE
+
+Every session, in order, no exceptions:
+
+1. **Quick Reference - Core Rules** (table of 11 rules below). Internalize all 11.
+2. **CRITICAL RULES - READ FIRST** — the long form of the philosophy: production-first, no workarounds, STOP AND ASK, zero tech debt, no deprecated dependencies, subagents inherit rules. "Time to do it right, not time to do it twice."
+3. **Common AI Mistakes** (table) AND **Part 2: Frequent Mistakes Claude Code Makes** (numbered list further down) — these are not optional reading. Every numbered item is a pattern that has been caught failing in this codebase or one like it; treat the list as a personal pre-flight checklist before each Edit/Write call.
+4. The relevant section for the task at hand (Architecture Rules, Code Quality Standards, Deployment, Git Workflow, Governance Boundaries).
+
+If the very first thing you do in a session is start editing without having scanned Part 2, you are violating Rule #10 (zero tech debt — including code that predates you) before you've made a single change.
+
+---
+
 ## Project Overview
 
 **Kingdom Grace Pastoral Network** — a mobile-first progressive web app (PWA) for pastoral care, check-ins, prayer walls, devotionals, and bishop oversight.
@@ -47,6 +60,9 @@
 | 6 | **Preserve existing functionality** - be a surgeon, not a butcher | Breaking features while adding new ones |
 | 7 | **Read before editing** - this is a large single-file app, understand context first | Guessing what's in the file |
 | 8 | **No deprecated dependencies** - zero deprecated APIs, meta tags, vendor-prefix fallbacks, or legacy SDK calls allowed | `apple-mobile-web-app-capable`, `keyCode`, `webkitAudioContext`, `unload` listeners, `document.write`, anything flagged `@deprecated` |
+| 9 | **Subagents inherit all rules** - briefing a sub-Agent (Explore, general-purpose, claude) with task context only is not enough; the full security/quality frame must travel with the prompt | Spawning an Agent without restating the no-shortcut + no-deprecated + audit-only rules |
+| 10 | **Zero tech debt — including old code that predates you** - touching any file means scanning it for legacy patterns and fixing them in the same PR, not just whatever the task asked for. "I only changed the bug it was reported for" is not acceptable when the same file has other rot. | `console.log` left in code because the bug fix didn't touch that line, deprecated APIs left in place "for compatibility", unused vendor-prefix fallbacks, dead code from previous versions |
+| 11 | **"Time to do it right, not time to do it twice"** - first version IS the real version. No shortcuts that require a second commit to fix. Every commit must leave the codebase in better shape than it found it. | Shipping with known warnings, shipping with "we'll harden it later", deferring a real fix to chase a deadline |
 
 ### Before Every Task
 ```bash
@@ -111,9 +127,15 @@ The first version IS the real version.
 
 ### Zero Technical Debt - ENFORCED
 
-- Do NOT introduce technical debt with quick fixes
-- Always implement proper, maintainable solutions
-- "We can fix it later" is not acceptable
+**Zero is the literal goal.** Not "minimize," not "manage," not "track" — **zero**.
+
+- Do NOT introduce technical debt with quick fixes.
+- Do NOT leave technical debt in place because it predates you. When you touch a file, scan it for legacy patterns and clean them in the same PR. "I only changed the bug it was reported for" is not acceptable when the same file has other rot. Pastors paid for production software — they get production software, not "good enough plus a backlog."
+- Always implement proper, maintainable solutions.
+- "We can fix it later" is not acceptable.
+- **"I have time to do it right. I do not have time to do it twice."** First version IS the real version. No shortcuts that require a second commit to fix. Every commit leaves the codebase in better shape than it found it.
+- The presence of a console warning, a deprecation notice, a PostgREST 400, an RLS deny that should have been caught at design time, or a runtime crash in a feature path = debt that must be cleared. None of these are acceptable to ship.
+- When in doubt: STOP AND ASK. A pause to clarify is always cheaper than re-doing work.
 
 ---
 

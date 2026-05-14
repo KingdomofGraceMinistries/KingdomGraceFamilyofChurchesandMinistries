@@ -1830,14 +1830,14 @@ function openEventCompose(){
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mist);margin:6px 0"><input type="checkbox" id="evt-virtual"> This is a virtual / online event</label>
       <div class="err" id="evt-err"></div>
       <div style="display:flex;gap:8px">
-        <button class="fsub" id="evt-create-btn" onclick="createEvent()" style="flex:1">Post event →</button>
+        <button class="fsub" id="evt-create-btn" onclick="postCalendarEvent()" style="flex:1">Post event →</button>
         <button class="tnav-btn" type="button" onclick="openEventCompose()" style="padding:10px 14px">Cancel</button>
       </div>
     </div>
   `;
 }
 
-async function createEvent(){
+async function postCalendarEvent(){
   const btn=$('evt-create-btn'); if(btn){ btn.disabled=true; btn.textContent='Posting...'; }
   const data={
     title:$('evt-title')?.value.trim(),
@@ -2052,7 +2052,7 @@ async function loadDM(){
   list.innerHTML=loading();
   try {
     const uid=ST.session.userId;
-    const rows=await sbS('rf_direct_messages',{select:'*',or:`sender_id.eq.${uid},recipient_id.eq.${uid}`,order:'created_at.asc'});
+    const rows=await sbS('rf_direct_messages',{select:'*',or:`(sender_id.eq.${uid},recipient_id.eq.${uid})`,order:'created_at.asc'});
     list.innerHTML=rows.length?rows.map(r=>{
       const mine=r.sender_id===uid;
       const receipt=mine?(r.is_read?'<span style="color:var(--gold);font-size:10px;margin-left:4px" title="Read">✓✓</span>':'<span style="color:var(--ash);font-size:10px;margin-left:4px" title="Sent">✓</span>'):'';
@@ -2430,9 +2430,29 @@ async function loadAnnouncements(){
   const list=$('ann-list'); if(!list) return;
   list.innerHTML=loading();
   try {
-    const rows=await sbS('rf_announcements',{select:'*,rf_pastors(full_name,avatar_url)',status:'eq.active',order:'created_at.desc'});
+    const rows=await sbS('rf_announcements',{select:'*',status:'eq.active',order:'created_at.desc'});
+    await hydratePastorRefs(rows, 'pastor_id', 'rf_pastors');
     list.innerHTML=rows.length?rows.map(r=>annCard(r,'pastor')).join(''):'<div class="empty">No announcements yet. Share something with the network.</div>';
   } catch(e){list.innerHTML='<div class="empty">Could not load announcements.</div>';}
+}
+
+// rf_announcements.pastor_id is text and may hold either a rf_pastors uuid OR
+// the sentinel 'bishop' — so no FK exists and PostgREST embeds (rf_pastors(...))
+// return 400. This helper hydrates each row with an `rf_pastors` object client
+// side, fetching only the unique non-sentinel ids in one round-trip.
+async function hydratePastorRefs(rows, fkColumn, outKey){
+  if(!Array.isArray(rows) || !rows.length) return;
+  const ids = Array.from(new Set(rows.map(r => r?.[fkColumn]).filter(v => v && v !== 'bishop')));
+  if(!ids.length) return;
+  try {
+    const inList = `(${ids.map(id => `"${id}"`).join(',')})`;
+    const pastors = await sbS('rf_pastors',{select:'id,full_name,avatar_url',id:'in.'+inList});
+    const byId = new Map(pastors.map(p => [p.id, p]));
+    for(const r of rows){
+      const id = r?.[fkColumn];
+      if(id && byId.has(id)) r[outKey] = byId.get(id);
+    }
+  } catch(_){ /* hydration is best-effort; annCard falls back to 'Pastor' */ }
 }
 
 function annCard(r, role){
@@ -2482,7 +2502,8 @@ async function loadBishopAnnouncements(){
   const panel=$('bp-announcements'); if(!panel) return;
   panel.innerHTML=loading();
   try {
-    const rows=await sbS('rf_announcements',{select:'*,rf_pastors(full_name,avatar_url)',order:'created_at.desc'});
+    const rows=await sbS('rf_announcements',{select:'*',order:'created_at.desc'});
+    await hydratePastorRefs(rows, 'pastor_id', 'rf_pastors');
     panel.innerHTML=`
       <div class="b-drill" style="max-width:560px;margin-bottom:20px">
         <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:14px">Post Network Announcement</div>
@@ -3128,7 +3149,7 @@ async function openBishopDmThread(pastorId){
     </div>`;
   const msgEl=$('b-thread-msgs');
   try {
-    const rows=await sbS('rf_direct_messages',{select:'*',or:`sender_id.eq.${pastorId},recipient_id.eq.${pastorId}`,order:'created_at.asc'});
+    const rows=await sbS('rf_direct_messages',{select:'*',or:`(sender_id.eq.${pastorId},recipient_id.eq.${pastorId})`,order:'created_at.asc'});
     msgEl.innerHTML=rows.length?rows.map(r=>{
       const mine=r.sender_id==='bishop';
       const receipt=mine?(r.is_read?'<span style="color:var(--gold);font-size:10px;margin-left:4px" title="Read">✓✓</span>':'<span style="color:var(--ash);font-size:10px;margin-left:4px" title="Sent">✓</span>'):'';
@@ -4262,10 +4283,13 @@ async function runSearch(q, mode){
     const wMatches=wins.filter(r=>(r.win_text||'').toLowerCase().includes(ql)||(r.rf_pastors?.full_name||'').toLowerCase().includes(ql));
     if(wMatches.length) groups.push({title:'Wins',icon:'🏆',screen:'s-wins',items:wMatches.map(r=>({text:r.win_text,meta:(r.rf_pastors?.full_name||'Pastor')+' · '+timeAgo(r.created_at)}))});
 
-    // Search announcements
-    const anns=await sbS('rf_announcements',{select:'id,title,body,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'50'});
+    // Search announcements. rf_announcements has no FK to rf_pastors (pastor_id
+    // is text and may be the 'bishop' sentinel) — hydrate the author name client
+    // side via the shared helper so search results show 'Bishop' or the pastor.
+    const anns=await sbS('rf_announcements',{select:'id,title,body,pastor_id,created_at',status:'eq.active',order:'created_at.desc',limit:'50'});
+    await hydratePastorRefs(anns, 'pastor_id', 'rf_pastors');
     const aMatches=anns.filter(r=>(r.title||'').toLowerCase().includes(ql)||(r.body||'').toLowerCase().includes(ql)||(r.rf_pastors?.full_name||'').toLowerCase().includes(ql));
-    if(aMatches.length) groups.push({title:'Announcements',icon:'📢',screen:'s-ann',items:aMatches.map(r=>({text:r.title||r.body,meta:(r.rf_pastors?.full_name||'Pastor')+' · '+timeAgo(r.created_at)}))});
+    if(aMatches.length) groups.push({title:'Announcements',icon:'📢',screen:'s-ann',items:aMatches.map(r=>({text:r.title||r.body,meta:(r.rf_pastors?.full_name||(r.pastor_id==='bishop'?'Bishop':'Pastor'))+' · '+timeAgo(r.created_at)}))});
 
     // Search DMs
     const uid=ST.session?.userId;
@@ -4578,9 +4602,10 @@ async function subscribeToPush(){
       });
     }
     if(!sub) return;
-    // Save subscription to Supabase
+    // Save subscription to Supabase. RLS gate is `user_id = auth.uid()`,
+    // so the column must hold the auth.users id, NOT the rf_pastors profile id.
     const subJson=sub.toJSON();
-    const userId=ST.session?.userId;
+    const userId=ST.session?.authUserId;
     if(!userId) return;
     await sbI('rf_push_subscriptions',{
       user_id:userId,
