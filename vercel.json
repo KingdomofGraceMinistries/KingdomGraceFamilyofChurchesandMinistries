@@ -1,32 +1,9 @@
 {
   "version": 2,
-  "name": "kingdom-grace-pastoral-network",
   "buildCommand": "",
   "outputDirectory": ".",
-  "routes": [
-    {
-      "src": "/",
-      "dest": "/kg-pastoral-network.html"
-    },
-    {
-      "src": "/sw.js",
-      "dest": "/sw.js"
-    },
-    {
-      "src": "/manifest.json",
-      "dest": "/manifest.json"
-    },
-    {
-      "src": "/icons/(.*)",
-      "dest": "/icons/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/kg-pastoral-network.html"
-    }
+  "rewrites": [
+    { "source": "/((?!sw\\.js|manifest\\.json|icons/).*)", "destination": "/kg-pastoral-network.html" }
   ],
   "headers": [
     {

@@ -14,15 +14,15 @@
 //   9. Audit + constant-time response.
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
 import { rateLimit, padTo } from "../_shared/rate_limit.ts";
 
 const SUPABASE_URL          = Deno.env.get("SUPABASE_URL")              ?? "";
-const SERVICE_ROLE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ANON_KEY              = Deno.env.get("SUPABASE_ANON_KEY")         ?? "";
+const SERVICE_ROLE_KEY      = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY              = Deno.env.get("SB_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const MIN_RESPONSE_MS       = 400;
 const EMAIL_RE              = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PIN_RE                = /^\d{6}$/;          // pastors must use 6-digit PIN

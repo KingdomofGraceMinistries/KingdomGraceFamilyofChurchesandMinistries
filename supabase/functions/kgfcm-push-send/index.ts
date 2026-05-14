@@ -9,7 +9,7 @@
 // CORS locked via shared module. console.error → audit().
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
@@ -18,7 +18,7 @@ const VAPID_PUBLIC_KEY      = Deno.env.get("VAPID_PUBLIC_KEY")          ?? "";
 const VAPID_PRIVATE_KEY     = Deno.env.get("VAPID_PRIVATE_KEY")         ?? "";
 const VAPID_SUBJECT         = Deno.env.get("VAPID_SUBJECT")             ?? "mailto:kgfcm2023@gmail.com";
 const SUPABASE_URL          = Deno.env.get("SUPABASE_URL")              ?? "";
-const SERVICE_ROLE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SERVICE_ROLE_KEY      = Deno.env.get("SB_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
