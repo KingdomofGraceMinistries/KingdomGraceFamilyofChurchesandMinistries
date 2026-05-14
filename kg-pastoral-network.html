@@ -523,7 +523,17 @@ function comingSoon(label){
   document.body.appendChild(d);
   setTimeout(()=>{ if(d.parentElement) d.remove(); }, 4000);
 }
-const weekNum  = () => { const d=new Date(),j=new Date(d.getFullYear(),0,1); return Math.ceil(((d-j)/86400000+j.getDay()+1)/7); };
+// ISO 8601 week number — weeks start on Monday. The Thursday-anchor trick
+// (shift the date to the Thursday of its ISO week, then count Thursdays from
+// year start) is the standard implementation. Bishop requirement: the week
+// prompt rotates every Monday, not Sunday.
+const weekNum = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+};
 const monthStr = () => new Date().toLocaleString('default',{month:'long',year:'numeric'});
 const saveLocal = (k,v) => localStorage.setItem(C.appId+'_'+k,JSON.stringify(v));
 const loadLocal = k => { try{return JSON.parse(localStorage.getItem(C.appId+'_'+k));}catch{return null;} };
@@ -924,8 +934,25 @@ function isValidWeekPrompt(d){
     && typeof d.ref==='string'       && d.ref.trim().length > 0
     && typeof d.theme==='string'     && d.theme.trim().length > 0;
 }
+// Purge any cached AI content under `<appId>_<prefix><something>` whose
+// "something" doesn't match the current bucket. Keeps localStorage from
+// growing every week/month and guarantees that crossing a boundary
+// (Sunday→Monday or last-day-of-month→first-of-month) drops the stale
+// content so the next call goes fresh to the AI.
+function purgeStaleAIKeys(prefix, currentBucket){
+  try {
+    const fullPrefix = C.appId + '_' + prefix;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(fullPrefix) && k !== fullPrefix + currentBucket) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch(_) { /* private mode etc. — non-fatal */ }
+}
 async function getWeekPrompt(){
   const wk = weekNum();
+  purgeStaleAIKeys('wp_', String(wk));
   const cached = loadLocal('wp_'+wk);
   // Defensive: an earlier malformed AI response could have poisoned the cache
   // with an empty or partial object. Only honor the cache if it has all four
@@ -946,6 +973,7 @@ async function getWeekPrompt(){
 
 async function getMonthChallenge(){
   const mo=new Date().toISOString().slice(0,7);
+  purgeStaleAIKeys('mc_', mo);
   const cached=loadLocal('mc_'+mo);
   const isValidChallenge = (d) => d && typeof d==='object'
     && typeof d.title==='string'  && d.title.trim().length > 0
