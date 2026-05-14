@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0a0a0f">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Pastoral Network">
 <link rel="manifest" href="/manifest.json">
@@ -4332,7 +4332,7 @@ const NOTIF = {
 // ── SOUND: gentle chime via Web Audio API ──
 function playNotifSound(){
   try {
-    if(!NOTIF.audioCtx) NOTIF.audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(!NOTIF.audioCtx) NOTIF.audioCtx=new AudioContext();
     const ctx=NOTIF.audioCtx;
     if(ctx.state==='suspended') ctx.resume();
     // Two-tone chime: E5 → G5

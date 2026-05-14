@@ -46,6 +46,7 @@
 | 5 | **No CORS/CSP wildcards** - use explicit origins only | `frame-ancestors *`, `connect-src *` |
 | 6 | **Preserve existing functionality** - be a surgeon, not a butcher | Breaking features while adding new ones |
 | 7 | **Read before editing** - this is a large single-file app, understand context first | Guessing what's in the file |
+| 8 | **No deprecated dependencies** - zero deprecated APIs, meta tags, vendor-prefix fallbacks, or legacy SDK calls allowed | `apple-mobile-web-app-capable`, `keyCode`, `webkitAudioContext`, `unload` listeners, `document.write`, anything flagged `@deprecated` |
 
 ### Before Every Task
 ```bash
@@ -113,6 +114,28 @@ The first version IS the real version.
 - Do NOT introduce technical debt with quick fixes
 - Always implement proper, maintainable solutions
 - "We can fix it later" is not acceptable
+
+---
+
+### No Deprecated Dependencies - ABSOLUTE
+
+**Zero deprecated APIs, meta tags, vendor-prefix fallbacks, or legacy SDK calls in this codebase.**
+
+- Before adding any meta tag, browser API, library import, or SDK call, check its current status on MDN / the vendor's docs / the SDK changelog.
+- When upgrading a dependency, scan its changelog for new deprecation notices and replace flagged call sites in the same PR. Don't merge with new warnings.
+- Vendor-prefix fallbacks (`webkitAudioContext`, `webkitURL`, `webkitRequestAnimationFrame`, etc.) are forbidden unless the modern API genuinely doesn't exist in a supported browser — and that's almost never true in 2026.
+- Legacy patterns to refuse on sight:
+  - `<meta name="apple-mobile-web-app-capable">` → use `mobile-web-app-capable`
+  - `KeyboardEvent.keyCode` → use `event.key`
+  - `window.webkitAudioContext` → use `AudioContext` directly
+  - `addEventListener('unload', …)` → use `pagehide`
+  - `document.write(…)` → never
+  - `Document.execCommand(…)` → use the Clipboard / Selection / Input APIs
+  - Mutation events → use `MutationObserver`
+- If a deprecated path is genuinely the only option for a non-trivial install base, include BOTH the deprecated and modern versions, leave a comment with the justification, AND surface the tradeoff to the user. Never use the deprecated one silently or alone.
+- If unsure whether something is deprecated, STOP AND ASK — don't ship and hope.
+
+**Why:** Deprecated code is debt the moment it's written. Browsers and SDKs eventually remove deprecated paths, and that removal lands on a field-pastor's phone after an OS update — silently breaking the pastoral network for users who can't debug it.
 
 ---
 
