@@ -859,12 +859,22 @@ async function consumeMagicLinkHash(){
 }
 // ── STORAGE UPLOAD ──
 async function storageUpload(bucket, path, file){
+  // Some files (renamed iPhone HEICs, raw camera files, drag-and-drop from
+  // certain apps) come through with file.type='' — Supabase storage rejects
+  // empty Content-Type with a 400. Fall back to image/jpeg when the
+  // browser couldn't sniff a type, which matches the .jpg extension the
+  // upload helpers currently generate.
+  const contentType = file.type || 'image/jpeg';
   const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
-    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':file.type,'x-upsert':'true'},
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType,'x-upsert':'true'},
     body:file
   });
-  if(!r.ok) throw new Error('Upload failed: '+r.status);
+  if(!r.ok){
+    let detail='';
+    try { const body=await r.text(); detail=body ? ' — '+body.slice(0,200) : ''; } catch(_){}
+    throw new Error('Upload failed: '+r.status+detail);
+  }
   return `${C.supabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
 }
 
@@ -873,12 +883,17 @@ async function storageUpload(bucket, path, file){
 // caller is responsible for generating a short-lived signed URL via
 // signedUrl(bucket, path) when it's time to fetch the file.
 async function storageUploadPrivate(bucket, path, file){
+  const contentType = file.type || 'application/octet-stream';
   const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
-    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':file.type,'x-upsert':'true'},
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType,'x-upsert':'true'},
     body:file
   });
-  if(!r.ok) throw new Error('Upload failed: '+r.status);
+  if(!r.ok){
+    let detail='';
+    try { const body=await r.text(); detail=body ? ' — '+body.slice(0,200) : ''; } catch(_){}
+    throw new Error('Upload failed: '+r.status+detail);
+  }
   return path;
 }
 
