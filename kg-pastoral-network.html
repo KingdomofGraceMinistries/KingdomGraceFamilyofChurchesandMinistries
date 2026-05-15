@@ -154,10 +154,10 @@ html,body{height:100%;background:var(--ink);color:var(--frost);font-family:'DM S
 .tnav-btn:hover{border-color:var(--gold);color:var(--gold);}
 .bnav{display:flex;background:var(--ink2);border-top:0.5px solid var(--br);flex-shrink:0;}
 .bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 12px;cursor:pointer;}
-.bn-ic{font-size:18px;line-height:1;color:var(--mist);}
+.bn-ic{font-size:18px;line-height:1;}
 .bn-lb{font-size:9px;color:var(--mist);}
 .bn.on .bn-lb{color:var(--gold);}
-.bn.on .bn-ic{color:var(--gold);filter:drop-shadow(0 0 4px rgba(201,168,76,0.5));}
+.bn.on .bn-ic{filter:drop-shadow(0 0 4px rgba(201,168,76,0.5));}
 .flbl{font-size:11px;color:var(--mist);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:6px;display:block;}
 .fin{width:100%;background:var(--ink3);border:0.5px solid var(--br);border-radius:var(--rm);padding:12px 14px;color:var(--frost);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.15s;margin-bottom:14px;}
 .fin:focus{border-color:var(--gold);}
@@ -227,7 +227,7 @@ textarea.fin{resize:vertical;min-height:80px;}
 .notif-badge{position:absolute;top:2px;right:50%;transform:translateX(12px);min-width:16px;height:16px;border-radius:8px;background:var(--flame);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;display:none;}
 .notif-badge.show{display:flex;}
 .bn{position:relative;}
-.notif-bell{position:relative;cursor:pointer;font-size:18px;padding:4px;color:var(--gold);}
+.notif-bell{position:relative;cursor:pointer;font-size:18px;padding:4px;}
 .notif-bell .notif-badge{top:-4px;right:-8px;transform:none;}
 .notif-drawer{position:fixed;top:0;right:0;bottom:0;width:min(340px,85vw);background:var(--ink);border-left:0.5px solid var(--br);z-index:10001;transform:translateX(100%);transition:transform 0.25s ease;display:flex;flex-direction:column;}
 .notif-drawer.open{transform:translateX(0);}
@@ -400,35 +400,6 @@ let KG_LOGO = '/icons/kg-logo.jpg';
 // Bishop mitre — purple body with gold orphrey band and gold cross at apex.
 // Inline SVG so it scales with font-size and does not depend on any font/emoji set.
 const MITRE = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em" aria-label="Mitre"><path d="M12 3Q6 7 6 14L6 20L18 20L18 14Q18 7 12 3Z" fill="#6a2c8a" stroke="#c8a84c" stroke-width="0.8"/><rect x="6" y="13" width="12" height="1.6" fill="#c8a84c"/><rect x="11.3" y="0.6" width="1.4" height="3" fill="#c8a84c"/><rect x="10.1" y="1.4" width="3.8" height="1" fill="#c8a84c"/></svg>';
-
-// Single-tone line glyph icon set. Each icon uses currentColor so the parent
-// element's CSS color drives the stroke — bottom-nav active state, hover,
-// disabled, etc. all just work via CSS color. Sized in em so they scale with
-// the parent font-size the same way emoji previously did. Replaces flip-phone
-// emoji across the chrome (home tiles, bottom nav, search, bell, etc.).
-const ICONS = (() => {
-  const wrap = (path) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;display:inline-block;vertical-align:-0.15em" aria-hidden="true">' + path + '</svg>';
-  return {
-    prayer:    wrap('<path d="M14 11V4a2 2 0 1 0-4 0v8"/><path d="M8 11.5V7a2 2 0 1 0-4 0v9c0 2.5 2 4.5 4.5 4.5h3.5a3 3 0 0 0 3-3"/><path d="M16 11V7a2 2 0 1 1 4 0v9c0 2.5-2 4.5-4.5 4.5"/>'),
-    trophy:    wrap('<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>'),
-    envelope:  wrap('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'),
-    calendar:  wrap('<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>'),
-    candle:    wrap('<path d="M7 21h10"/><rect width="10" height="13" x="7" y="8" rx="1"/><path d="M12 8V5c0-1.5 1-2 1-2 0 1 .5 2 1.5 3"/>'),
-    wheat:     wrap('<path d="M12 22V8"/><path d="M5 12c0-3 2-5 5-5"/><path d="M19 12c0-3-2-5-5-5"/><path d="M5 17c0-3 2-5 5-5"/><path d="M19 17c0-3-2-5-5-5"/>'),
-    heart:     wrap('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
-    dove:      wrap('<path d="M21 5c-2 0-3 1-5 1-2 0-4-2-7-2s-6 3-6 6c0 2 1 3 2 4l3 2 3 3h3l3-3 2-4 2-7Z"/><path d="M9 6 7 3"/>'),
-    search:    wrap('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
-    book:      wrap('<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/>'),
-    bell:      wrap('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
-    home:      wrap('<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><polyline points="9 22 9 12 15 12 15 22"/>'),
-    handshake: wrap('<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="M3 4h8"/><path d="M3 4 2 14l6.5 6.5a1 1 0 1 0 3-3"/>'),
-    megaphone: wrap('<path d="M3 11l18-5v12L3 14z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
-    user:      wrap('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
-    crown:     wrap('<path d="M2 6l4 4 6-7 6 7 4-4-2 12H4Z"/><path d="M5 21h14"/>'),
-    flame:     wrap('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.38 0 2.5-1.12 2.5-2.5 0-1.38-1-2.5-1.5-3-2-2 .5-3.5 0-5 0 0 4 1.5 4 5.5C16 16 13.5 19 12 19c-2 0-4-1.5-4-4 0-1 .5-1.5.5-1.5"/><path d="M12 2c0 0 4 1 4 4-2-2-4-2-4-2"/>'),
-    scroll:    wrap('<path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>'),
-  };
-})();
 
 // Fetch all config from Supabase — called once at boot
 async function loadConfig(){
@@ -1478,9 +1449,8 @@ async function loadHome(){
           <div class="week-question">"${esc(d.scripture_text)}"</div>
           ${d.scripture_ref?`<em style="font-size:11px;color:var(--ash)">— ${esc(d.scripture_ref)}</em>`:''}
         </div>
-        <button onclick="go('s-devotion')" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 18px;margin-bottom:16px;background:linear-gradient(135deg,var(--gold),#a98a3a);color:var(--ink);border:none;border-radius:var(--rm);font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;letter-spacing:0.5px;cursor:pointer;box-shadow:0 2px 8px rgba(201,168,76,0.25)">
-          <span style="display:inline-flex;align-items:center;font-size:18px">${ICONS.book}</span>
-          <span>Read Today's Devotion &rarr;</span>
+        <button onclick="go('s-devotion')" style="display:block;width:100%;padding:14px 18px;margin-bottom:16px;background:linear-gradient(135deg,var(--gold),#a98a3a);color:var(--ink);border:none;border-radius:var(--rm);font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;letter-spacing:0.5px;cursor:pointer;box-shadow:0 2px 8px rgba(201,168,76,0.25)">
+          📖 Read Today's Devotion →
         </button>`;
       } else {
         wpEl.innerHTML = '';
@@ -1507,7 +1477,7 @@ async function loadHome(){
         }
         blastsEl.innerHTML=`
           <div style="margin-top:16px">
-            <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px;display:flex;align-items:center;gap:8px"><span style="color:var(--gold);font-size:16px;display:inline-flex">${ICONS.scroll}</span> From the Desk of the Bishop</div>
+            <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">📜 From the Desk of the Bishop</div>
             ${msgs.map(m=>{
               const seenCount = reads.filter(r=>r.message_id===m.id).length;
               return `<div class="card" style="border-left:2px solid var(--gold);margin-bottom:10px">
@@ -4309,7 +4279,7 @@ function renderPastor(){
       <div><div class="tnav-title">${C.networkName}</div><div class="tnav-sub">Pastoral Network</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <div class="notif-bell" onclick="openNotifDrawer()">${ICONS.bell}<div class="notif-badge" id="notif-badge-home"></div></div>
+      <div class="notif-bell" onclick="openNotifDrawer()">🔔<div class="notif-badge" id="notif-badge-home"></div></div>
       <button class="tnav-btn" onclick="go('s-checkin')">Check In</button>
       <button class="tnav-btn bishop-only" onclick="bishopBackToDashboard()" style="display:none;background:var(--gold);color:var(--ink)">View Dashboard</button>
     </div>
@@ -4321,7 +4291,7 @@ function renderPastor(){
     </div>
     <div style="padding-top:16px">
       <div class="search-bar">
-        <span class="search-icon">${ICONS.search}</span>
+        <span class="search-icon">🔍</span>
         <input id="pastor-search" type="text" placeholder="Search prayers, wins, messages..." oninput="debounceSearch(this.value,'pastor')">
       </div>
       <div id="pastor-search-results" class="search-results"></div>
@@ -4330,24 +4300,24 @@ function renderPastor(){
       <div id="home-wp"></div>
       <div style="font-size:10px;color:var(--mist);letter-spacing:1.5px;text-transform:uppercase;margin:4px 2px 8px">Pastoral Life</div>
       <div class="stats-row">
-        <div class="stat-box" onclick="go('s-prayer')"><div class="stat-num">${ICONS.prayer}</div><div class="stat-lbl">Prayer Wall</div></div>
-        <div class="stat-box" onclick="go('s-wins')"><div class="stat-num">${ICONS.trophy}</div><div class="stat-lbl">Wins Wall</div></div>
-        <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">${ICONS.envelope}</div><div class="stat-lbl">Message Bishop</div></div>
+        <div class="stat-box" onclick="go('s-prayer')"><div class="stat-num">🙏</div><div class="stat-lbl">Prayer Wall</div></div>
+        <div class="stat-box" onclick="go('s-wins')"><div class="stat-num">🏆</div><div class="stat-lbl">Wins Wall</div></div>
+        <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">✉️</div><div class="stat-lbl">Message Bishop</div></div>
       </div>
       <div style="font-size:10px;color:var(--mist);letter-spacing:1.5px;text-transform:uppercase;margin:14px 2px 8px">Together as One</div>
       <div class="stats-row">
-        <div class="stat-box" onclick="go('s-events')"><div class="stat-num">${ICONS.calendar}</div><div class="stat-lbl">Events</div></div>
-        <div class="stat-box" onclick="go('s-fasts')"><div class="stat-num">${ICONS.candle}</div><div class="stat-lbl">Consecration</div></div>
-        <div class="stat-box" onclick="go('s-outreach')"><div class="stat-num">${ICONS.wheat}</div><div class="stat-lbl">Outreach</div></div>
+        <div class="stat-box" onclick="go('s-events')"><div class="stat-num">📅</div><div class="stat-lbl">Events</div></div>
+        <div class="stat-box" onclick="go('s-fasts')"><div class="stat-num">🕯️</div><div class="stat-lbl">Consecration</div></div>
+        <div class="stat-box" onclick="go('s-outreach')"><div class="stat-num">🌾</div><div class="stat-lbl">Outreach</div></div>
       </div>
       <div style="font-size:10px;color:var(--ash);letter-spacing:1.5px;text-transform:uppercase;margin:14px 2px 8px">In Formation</div>
       <div class="stats-row">
         <div class="stat-box" onclick="comingSoon('Giving')" style="opacity:0.65;position:relative">
-          <div class="stat-num">${ICONS.heart}</div><div class="stat-lbl">Giving</div>
+          <div class="stat-num">💝</div><div class="stat-lbl">Giving</div>
           <div style="position:absolute;top:4px;right:4px;font-size:8px;color:var(--gold);letter-spacing:1px">SOON</div>
         </div>
         <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)" style="opacity:0.65;position:relative">
-          <div class="stat-num">${ICONS.dove}</div><div class="stat-lbl">Apostles' Council</div>
+          <div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div>
           <div style="position:absolute;top:4px;right:4px;font-size:8px;color:var(--gold);letter-spacing:1px">SOON</div>
         </div>
       </div>
@@ -4379,11 +4349,11 @@ function renderPastor(){
     </div>
   </div>
   <div class="bnav">
-    <div class="bn on" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn on" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4418,11 +4388,11 @@ function renderPastor(){
     </div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4449,11 +4419,11 @@ function renderPastor(){
     </div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4467,11 +4437,11 @@ function renderPastor(){
     <div id="outreach-body" style="padding-top:14px"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4485,11 +4455,11 @@ function renderPastor(){
     <div id="pastor-view-body" style="padding-top:14px"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4503,11 +4473,11 @@ function renderPastor(){
     <div id="fasts-body" style="padding-top:14px"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4521,11 +4491,11 @@ function renderPastor(){
     <div id="devotion-body" style="padding:18px 16px 40px;max-width:560px;margin:0 auto"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4539,11 +4509,11 @@ function renderPastor(){
     <div id="events-body" style="padding-top:14px"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4565,11 +4535,11 @@ function renderPastor(){
     <div id="team-responses"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn on" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn on" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4589,11 +4559,11 @@ function renderPastor(){
     <div id="prayer-list"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn on" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn on" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4616,11 +4586,11 @@ function renderPastor(){
     <div id="wins-list"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn on" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn on" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4689,11 +4659,11 @@ function renderPastor(){
     </div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn on" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn on" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4714,11 +4684,11 @@ function renderPastor(){
     </div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn on" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn on" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
@@ -4746,11 +4716,11 @@ function renderPastor(){
     <div id="ann-list"></div>
   </div>
   <div class="bnav">
-    <div class="bn" onclick="go('s-home')"><span class="bn-ic">${ICONS.home}</span><span class="bn-lb">Home</span></div>
-    <div class="bn" onclick="go('s-team')"><span class="bn-ic">${ICONS.handshake}</span><span class="bn-lb">Team</span></div>
-    <div class="bn on" onclick="go('s-ann')"><span class="bn-ic">${ICONS.megaphone}</span><span class="bn-lb">Updates</span></div>
-    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">${ICONS.prayer}</span><span class="bn-lb">Prayer</span></div>
-    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">${ICONS.user}</span><span class="bn-lb">Me</span></div>
+    <div class="bn" onclick="go('s-home')"><span class="bn-ic">🏠</span><span class="bn-lb">Home</span></div>
+    <div class="bn" onclick="go('s-team')"><span class="bn-ic">🤝</span><span class="bn-lb">Team</span></div>
+    <div class="bn on" onclick="go('s-ann')"><span class="bn-ic">📢</span><span class="bn-lb">Updates</span></div>
+    <div class="bn" onclick="go('s-prayer')"><span class="bn-ic">🙏</span><span class="bn-lb">Prayer</span></div>
+    <div class="bn" onclick="go('s-profile')"><span class="bn-ic">👤</span><span class="bn-lb">Me</span></div>
   </div>
 </div>
 
