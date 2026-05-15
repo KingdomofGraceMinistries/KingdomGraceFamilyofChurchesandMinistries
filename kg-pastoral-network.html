@@ -63,6 +63,14 @@ html[data-theme="cream"] #app::before{
   opacity:0.10;
   filter:grayscale(1) brightness(0.45) contrast(1.2);
 }
+/* Cream theme: the .week-label and .week-prompt em both default to gold
+   (var(--gold) maps to #8a6a1c on cream), which gets too close to the
+   golden card tint behind them and reads as low-contrast. Override to
+   a darker brown that still feels like an accent. */
+html[data-theme="cream"] .week-prompt .week-label,
+html[data-theme="cream"] .week-prompt em{
+  color:var(--mist);
+}
 #app > *{position:relative;z-index:1;}
 /* App-screen visual frame — card edges only show at tablet/desktop. Mobile stays fullscreen. */
 @media (min-width:500px){
@@ -173,14 +181,14 @@ html[data-theme="cream"] #app::before{
 .b-chip.on{background:var(--gold3);border-color:var(--gold);color:var(--gold);}
 
 /* ── SHARED PASTOR STYLES ── */
-.tnav{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 12px;background:var(--ink);border-bottom:0.5px solid var(--br);flex-shrink:0;}
+.tnav{display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) 12px calc(18px + env(safe-area-inset-left));background:var(--ink);border-bottom:0.5px solid var(--br);flex-shrink:0;}
 .tnav-logo{display:flex;align-items:center;gap:10px;}
 .tnav-mark{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--ink);font-family:'Cormorant Garamond',serif;flex-shrink:0;}
 .tnav-title{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:700;color:var(--frost);}
 .tnav-sub{font-size:10px;color:var(--mist);}
 .tnav-btn{background:transparent;border:0.5px solid var(--br);border-radius:var(--rs);padding:6px 12px;font-size:11px;color:var(--mist);cursor:pointer;font-family:'DM Sans',sans-serif;}
 .tnav-btn:hover{border-color:var(--gold);color:var(--gold);}
-.bnav{display:flex;background:var(--ink2);border-top:0.5px solid var(--br);flex-shrink:0;}
+.bnav{display:flex;background:var(--ink2);border-top:0.5px solid var(--br);flex-shrink:0;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
 .bn{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 12px;cursor:pointer;}
 .bn-ic{font-size:18px;line-height:1;}
 .bn-lb{font-size:9px;color:var(--mist);}
