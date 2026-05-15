@@ -1444,10 +1444,11 @@ async function loadHome(){
       // can publish it.
       if(d && d.scripture_text && (d.status==='published' || canManageDevotions())){
         const isDraft = d.status !== 'published';
-        wpEl.innerHTML = `<div class="week-prompt">
+        wpEl.innerHTML = `<div class="week-prompt" onclick="go('s-devotion')" style="cursor:pointer">
           <div class="week-label">📖 Scripture of the day${isDraft?' · <span style="color:var(--flame)">DRAFT</span>':''}</div>
           <div class="week-question">"${esc(d.scripture_text)}"</div>
           ${d.scripture_ref?`<em style="font-size:11px;color:var(--ash)">— ${esc(d.scripture_ref)}</em>`:''}
+          <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--gold4);font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px">Read today's devotion →</div>
         </div>`;
       } else {
         wpEl.innerHTML = '';
@@ -4282,6 +4283,10 @@ function renderPastor(){
     </div>
   </div>
   <div class="scroll">
+    <div style="padding:18px 16px 10px;text-align:center;border-bottom:1px solid var(--gold4)">
+      <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:var(--gold);line-height:1.3">"${esc(C.tagline)}"</div>
+      <div style="font-size:10px;color:var(--mist);text-transform:uppercase;letter-spacing:2px;margin-top:6px">— Bishop Sasser</div>
+    </div>
     <div style="padding-top:16px">
       <div class="search-bar">
         <span class="search-icon">🔍</span>
@@ -4291,19 +4296,28 @@ function renderPastor(){
       <div id="pastor-home-content">
       <div id="care-banner" class="care-banner" style="display:none"></div>
       <div id="home-wp"></div>
+      <div style="font-size:10px;color:var(--mist);letter-spacing:1.5px;text-transform:uppercase;margin:4px 2px 8px">Pastoral Life</div>
       <div class="stats-row">
         <div class="stat-box" onclick="go('s-prayer')"><div class="stat-num">🙏</div><div class="stat-lbl">Prayer Wall</div></div>
         <div class="stat-box" onclick="go('s-wins')"><div class="stat-num">🏆</div><div class="stat-lbl">Wins Wall</div></div>
         <div class="stat-box" onclick="go('s-dm')"><div class="stat-num">✉️</div><div class="stat-lbl">Message Bishop</div></div>
       </div>
-      <div class="stats-row" style="margin-top:10px">
+      <div style="font-size:10px;color:var(--mist);letter-spacing:1.5px;text-transform:uppercase;margin:14px 2px 8px">Together as One</div>
+      <div class="stats-row">
         <div class="stat-box" onclick="go('s-events')"><div class="stat-num">📅</div><div class="stat-lbl">Events</div></div>
         <div class="stat-box" onclick="go('s-fasts')"><div class="stat-num">🕯️</div><div class="stat-lbl">Consecration</div></div>
         <div class="stat-box" onclick="go('s-outreach')"><div class="stat-num">🌾</div><div class="stat-lbl">Outreach</div></div>
       </div>
-      <div class="stats-row" style="margin-top:10px">
-        <div class="stat-box" onclick="comingSoon('Giving')"><div class="stat-num">💝</div><div class="stat-lbl">Giving</div></div>
-        <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)"><div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div></div>
+      <div style="font-size:10px;color:var(--ash);letter-spacing:1.5px;text-transform:uppercase;margin:14px 2px 8px">In Formation</div>
+      <div class="stats-row">
+        <div class="stat-box" onclick="comingSoon('Giving')" style="opacity:0.65;position:relative">
+          <div class="stat-num">💝</div><div class="stat-lbl">Giving</div>
+          <div style="position:absolute;top:4px;right:4px;font-size:8px;color:var(--gold);letter-spacing:1px">SOON</div>
+        </div>
+        <div class="stat-box" onclick="comingSoon(&quot;Apostles&#39; Council&quot;)" style="opacity:0.65;position:relative">
+          <div class="stat-num">🕊️</div><div class="stat-lbl">Apostles' Council</div>
+          <div style="position:absolute;top:4px;right:4px;font-size:8px;color:var(--gold);letter-spacing:1px">SOON</div>
+        </div>
       </div>
       <div id="home-active-fast"></div>
       <div id="home-upcoming-events"></div>
@@ -4311,12 +4325,18 @@ function renderPastor(){
         <div class="flbl" style="margin-bottom:10px;font-family:'Cormorant Garamond',serif;font-size:15px;letter-spacing:1px">${MITRE} Our Leadership</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="card" onclick="go('s-bishop-profile')" style="cursor:pointer;text-align:center;padding:16px 8px">
-            <div style="font-size:28px;margin-bottom:6px">${MITRE}</div>
+            <div style="width:72px;height:72px;border-radius:50%;border:2px solid var(--gold);margin:0 auto 8px;overflow:hidden;background:var(--ink3)">
+              <img src="${esc(C.bishopPhotoUrl||C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.bishopName)}"
+                   onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:28px;color:var(--gold)\'>👑</div>'">
+            </div>
             <div style="font-size:13px;font-weight:500;color:var(--frost)" id="home-bishop-name">${esc(C.bishopName)}</div>
             <div style="font-size:11px;color:var(--mist)">Presiding Bishop</div>
           </div>
           <div class="card" onclick="go('s-apostle-ericka')" style="cursor:pointer;text-align:center;padding:16px 8px">
-            <div style="font-size:28px;margin-bottom:6px">🕊️</div>
+            <div style="width:72px;height:72px;border-radius:50%;border:2px solid var(--gold);margin:0 auto 8px;overflow:hidden;background:var(--ink3)">
+              <img src="${esc(C.apostlePhotoUrl||C.logoUrl)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(C.apostleName)}"
+                   onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\'display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:28px;color:var(--gold)\'>🕊️</div>'">
+            </div>
             <div style="font-size:13px;font-weight:500;color:var(--frost)">${esc(C.apostleName)}</div>
             <div style="font-size:11px;color:var(--mist)">${esc(C.apostleRoleLabel||'')}</div>
           </div>
