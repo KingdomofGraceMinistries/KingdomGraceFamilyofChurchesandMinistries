@@ -865,9 +865,16 @@ async function storageUpload(bucket, path, file){
   // browser couldn't sniff a type, which matches the .jpg extension the
   // upload helpers currently generate.
   const contentType = file.type || 'image/jpeg';
+  // x-upsert is intentionally omitted. With it set, Supabase storage emits
+  // INSERT ... ON CONFLICT DO UPDATE, which makes Postgres evaluate the
+  // UPDATE policy's WITH CHECK against the would-be-updated row even when
+  // there's no actual conflict — that path was rejecting authenticated
+  // pastor uploads with "new row violates row-level security policy" on
+  // the announcements / wins / avatars buckets. All callers generate a
+  // fresh Date.now()-suffixed path, so collisions don't happen in practice.
   const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
-    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType,'x-upsert':'true'},
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType},
     body:file
   });
   if(!r.ok){
@@ -884,9 +891,12 @@ async function storageUpload(bucket, path, file){
 // signedUrl(bucket, path) when it's time to fetch the file.
 async function storageUploadPrivate(bucket, path, file){
   const contentType = file.type || 'application/octet-stream';
+  // x-upsert intentionally omitted — see storageUpload() above for the
+  // RLS reason. Private buckets (credentials, ministry-photos) also
+  // generate fresh Date.now()-suffixed paths so collisions don't happen.
   const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
-    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType,'x-upsert':'true'},
+    headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType},
     body:file
   });
   if(!r.ok){
