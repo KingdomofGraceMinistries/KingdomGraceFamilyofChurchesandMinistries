@@ -63,13 +63,13 @@ html[data-theme="cream"] #app::before{
   opacity:0.10;
   filter:grayscale(1) brightness(0.45) contrast(1.2);
 }
-/* Cream theme: the .week-label and .week-prompt em both default to gold
-   (var(--gold) maps to #8a6a1c on cream), which gets too close to the
-   golden card tint behind them and reads as low-contrast. Override to
-   a darker brown that still feels like an accent. */
-html[data-theme="cream"] .week-prompt .week-label,
-html[data-theme="cream"] .week-prompt em{
-  color:var(--mist);
+/* Cream theme: the scripture card's hardcoded gold gradient background
+   (set on .week-prompt) reads as golden-cream and washes out the gold
+   text inside. Switch to the standard cream card background (var(--ink2))
+   so the scripture card matches the rest of the cards on cream and gold
+   text reads cleanly against it. Dark theme unaffected. */
+html[data-theme="cream"] .week-prompt{
+  background:var(--ink2);
 }
 #app > *{position:relative;z-index:1;}
 /* App-screen visual frame — card edges only show at tablet/desktop. Mobile stays fullscreen. */
