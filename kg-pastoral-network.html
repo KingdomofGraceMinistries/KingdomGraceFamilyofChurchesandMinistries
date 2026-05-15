@@ -1444,12 +1444,14 @@ async function loadHome(){
       // can publish it.
       if(d && d.scripture_text && (d.status==='published' || canManageDevotions())){
         const isDraft = d.status !== 'published';
-        wpEl.innerHTML = `<div class="week-prompt" onclick="go('s-devotion')" style="cursor:pointer">
+        wpEl.innerHTML = `<div class="week-prompt">
           <div class="week-label">📖 Scripture of the day${isDraft?' · <span style="color:var(--flame)">DRAFT</span>':''}</div>
           <div class="week-question">"${esc(d.scripture_text)}"</div>
           ${d.scripture_ref?`<em style="font-size:11px;color:var(--ash)">— ${esc(d.scripture_ref)}</em>`:''}
-          <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--gold4);font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px">Read today's devotion →</div>
-        </div>`;
+        </div>
+        <button onclick="go('s-devotion')" style="display:block;width:100%;padding:14px 18px;margin-bottom:16px;background:linear-gradient(135deg,var(--gold),#a98a3a);color:var(--ink);border:none;border-radius:var(--rm);font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;letter-spacing:0.5px;cursor:pointer;box-shadow:0 2px 8px rgba(201,168,76,0.25)">
+          📖 Read Today's Devotion →
+        </button>`;
       } else {
         wpEl.innerHTML = '';
       }
