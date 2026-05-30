@@ -3,7 +3,7 @@
 // Offline-first for rural areas with limited connectivity
 // ============================================================
 
-const CACHE_NAME = 'kg-pastoral-v28';
+const CACHE_NAME = 'kg-pastoral-v29';
 // Pre-cache only the immutable app shell. The main HTML is served
 // network-first so updates land on every reload without needing a
 // cache-name bump.
@@ -119,20 +119,25 @@ async function cacheFirstThenNetwork(request) {
 }
 
 async function networkFirstThenCache(request) {
+  // Pastors can't distinguish "no data" from "couldn't reach the server" if we
+  // synthesize a 200 + [] on failure — and for confessional data (prayer
+  // requests, devotions, DMs), that ambiguity is unsafe: a network blip
+  // would render an empty wall and the pastor would believe nothing's there.
+  // Real network failures must surface as real failures.
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()).catch(()=>{});
     }
     return response;
-  } catch {
+  } catch (err) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    return new Response(JSON.stringify([]), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ error: 'network_unavailable', message: 'Could not reach the network and no cached copy is available.' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
 
