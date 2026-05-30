@@ -71,6 +71,19 @@ html[data-theme="cream"] #app::before{
 html[data-theme="cream"] .week-prompt{
   background:var(--ink2);
 }
+/* Cream theme: the html/body background above is hardcoded to a near-black
+   radial gradient (#141018 → #05040a) that doesn't swap with the theme
+   palette. Screens like s-devotion use background:transparent and inherit
+   from body, so in cream mode the dark-brown --frost text would sit on
+   the still-dark body — a WCAG contrast failure. Override the base so
+   var(--frost) reads cleanly against a cream backdrop. The dark theme
+   keeps its hand-tuned depth gradient untouched. */
+html[data-theme="cream"],
+html[data-theme="cream"] body{
+  background:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(138,106,28,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at top, #f1e7cf 0%, #e0d2ad 100%);
+}
 #app > *{position:relative;z-index:1;}
 /* App-screen visual frame — card edges only show at tablet/desktop. Mobile stays fullscreen. */
 @media (min-width:500px){
@@ -634,6 +647,12 @@ function applyTheme(){
   // background-logo watermark needs a darker filter on the cream theme so
   // it doesn't blow out to white-on-white).
   document.documentElement.dataset.theme = target.id;
+  // Sync the browser chrome (mobile status-bar tint, PWA top bar) to the
+  // active theme's base color so the system UI doesn't clash with the app
+  // body in light themes. Pulls from the palette so any future theme works
+  // without code changes.
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta && target.palette?.ink) themeMeta.setAttribute('content', target.palette.ink);
 }
 const avHTML = (url,name,size=36) => url
   ? `<img src="${esc(url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)">`
