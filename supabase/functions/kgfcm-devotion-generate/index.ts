@@ -259,7 +259,7 @@ async function generateDevotion(
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (e) {
+  } catch {
     throw new Error(`Devotion generator returned non-JSON: ${cleaned.slice(0, 200)}`);
   }
   const d = parsed as Partial<DevotionDraft>;

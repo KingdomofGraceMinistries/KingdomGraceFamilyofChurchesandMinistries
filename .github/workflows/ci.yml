@@ -1,0 +1,99 @@
+name: CI
+
+# Server-side enforcement of the same gates the local .githooks/pre-commit and
+# in-session PreToolUse hooks apply. A contributor who bypasses the local hook
+# (or an edit made outside Claude Code) is still caught here on push / PR.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Mirror of the KGFCM content guard, scoped to files the change touches ──
+  # The guard is a diff scanner by design (pre-commit scans the staged set;
+  # PreToolUse scans the single edit). Scanning only changed files keeps that
+  # contract and avoids re-flagging already-applied, immutable migrations.
+  content-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan changed source files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          scanner="$GITHUB_WORKSPACE/.claude/hooks/content-scan.sh"
+          chmod +x "$scanner"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"
+          else
+            base="$PUSH_BEFORE"
+          fi
+          # New-branch / first-push sentinel or unreachable base → fall back to
+          # this commit's parent (scan just what this push introduced).
+          if ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            base="$(git rev-parse --verify --quiet "${HEAD_SHA}^" || echo "$HEAD_SHA")"
+          fi
+
+          blocked=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue   # skip deletions
+            case "$f" in
+              *.ts|*.js|*.html|*.sql)
+                if ! "$scanner" "$GITHUB_WORKSPACE/$f" < "$f"; then
+                  blocked=1
+                fi
+                ;;
+            esac
+          done < <(git diff --name-only "$base" "$HEAD_SHA")
+
+          if [ "$blocked" -ne 0 ]; then
+            echo "::error::KGFCM content guard blocked one or more changed files (see above)."
+            exit 1
+          fi
+          echo "Content guard: clean."
+
+  # ── Deno edge functions: lint + tests ──
+  deno:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase/functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Lint
+        run: deno lint
+      - name: Test
+        run: deno test --allow-env --no-check _shared/test_shared.ts
+
+  # ── Static assets: JSON must parse ──
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON
+        run: |
+          set -euo pipefail
+          for f in manifest.json vercel.json .mcp.json; do
+            jq empty "$f"
+            echo "OK  $f"
+          done

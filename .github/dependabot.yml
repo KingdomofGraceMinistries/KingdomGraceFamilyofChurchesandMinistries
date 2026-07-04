@@ -1,0 +1,14 @@
+version: 2
+
+# This app has no bundled/npm dependencies by design (single-file vanilla HTML,
+# Deno edge functions pin their imports by URL). The one ecosystem Dependabot
+# can meaningfully patch here is the GitHub Actions used by the workflows above.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 5

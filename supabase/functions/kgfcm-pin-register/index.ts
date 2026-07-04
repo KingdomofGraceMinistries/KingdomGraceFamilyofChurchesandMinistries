@@ -14,7 +14,7 @@
 //   9. Audit + constant-time response.
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";

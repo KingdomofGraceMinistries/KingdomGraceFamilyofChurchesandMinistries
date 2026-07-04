@@ -1,0 +1,31 @@
+# KGFCM gitleaks configuration.
+# Extends gitleaks' default ruleset and allowlists ONLY values that are
+# public by design. Real secrets (service_role keys, SMTP creds, Anthropic
+# API keys, PIN pepper) must never appear in this repo — do NOT allowlist them.
+
+title = "KGFCM gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public-by-design Supabase anon credentials (bounded by RLS)."
+
+# Supabase publishable keys are meant to ship in client code (see the config
+# block in kg-pastoral-network.html). They map to the anon role and are gated
+# by the RLS policies in migration 20260513170000_real_auth.
+regexes = [
+  '''sb_publishable_[A-Za-z0-9_-]+''',
+]
+
+# The legacy long-lived anon-role JWT lived in these commits before it was
+# removed in 7db8b56. Decoded role = "anon" (verified), never service_role, so
+# it is public-by-design. Allowlisted by commit so the token itself is not
+# re-embedded here. New commits carry no JWT — the live app uses the
+# publishable key above.
+commits = [
+  "8e191d88b044f44c951c912804c066da47eea596",
+  "712a87c9827d2296d3cadae5906f939fc3053d28",
+  "c91620ba35765fecce4a70a248f0601aa971c3e3",
+  "7db8b56facca37c0287637c8bc98eea1435cd95d",
+]

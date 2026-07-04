@@ -1,0 +1,33 @@
+name: CodeQL
+
+# Static security analysis of all JavaScript/TypeScript in the repo:
+# the inline app logic in kg-pastoral-network.html + sw.js and the Deno
+# edge functions under supabase/functions. Free on this public repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '27 3 * * 1'   # Mondays 03:27 UTC — catch newly-published rules
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
