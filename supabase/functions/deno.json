@@ -1,0 +1,12 @@
+{
+  // Lint config for the edge-function tree. Inline `https:` / `jsr:` import
+  // specifiers are the documented Supabase edge-function convention (each
+  // function pins its own versions and is deployed standalone via
+  // `supabase functions deploy`), so Deno's `no-import-prefix` rule — which
+  // pushes toward a bundler-style import map — does not apply here.
+  "lint": {
+    "rules": {
+      "exclude": ["no-import-prefix"]
+    }
+  }
+}
