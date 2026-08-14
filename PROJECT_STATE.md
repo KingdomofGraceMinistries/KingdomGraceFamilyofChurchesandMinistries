@@ -1,9 +1,86 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-05-13
+**Last updated:** 2026-08-14
 **Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🔭 NEXT UP — white-label + platform/app views (opened 2026-08-14)
+
+Two directives from the 2026-08-14 session. Nothing below is started; each item
+records what was actually inspected so the next session does not re-derive it.
+
+### A. White-label — nothing hardcoded
+
+**Client is effectively done.** `kg-pastoral-network.html` resolves 25 branding
+keys from `rf_network_config` (`network_name`, `network_short`, `bishop_name`,
+`bishop_title`, `bishop_photo_url`, `bishop_bio`, `apostle_*`, `couple_*`,
+`logo_url`, `tagline`, `est_line`, `themes`, `footer_*`, `app_id`,
+`ai_proxy_fn`, `push_notify_fn`, `vapid_public_key`). The last two literal
+bishop names were removed in `bde7bb6`; no occurrence remains in displayed text.
+
+**Edge functions are NOT.** Compiled-in strings, in priority order:
+
+| # | Location | Hardcoded | Why it matters |
+|---|---|---|---|
+| A1 | `kgfcm-devotion-generate-v2/index.ts:368` (`SYSTEM_PROMPT`) | Network name **and** "a network of Black-church pastoral leaders" | **Highest value.** Carries this network's identity and theological voice. A second tenant would silently generate devotions written for Kingdom Grace. This is Rule #12 territory — theology in a `const`. Belongs in `rf_network_config`, authored per bishop. |
+| A2 | `kgfcm-devotion-generate-v2/index.ts:258` | Network name in the user prompt | Same fix, same migration. |
+| A3 | `kgfcm-checkin-remind/index.ts:56` | "Your Kingdom Grace family hasn't heard from you in a while…" | Push body sent to every overdue pastor. |
+| A4 | `kgfcm-pin-reset/index.ts:29`, `kgfcm-admin-pin-issue/index.ts:51` | `RESEND_FROM` default `Kingdom Grace <noreply@kingdomgracefamily.com>` | Env-overridable, so lower risk, but the default is branded. |
+
+> **Do A1/A2 together.** Keep the existing prompt as the seeded value for this
+> network so behaviour does not change on deploy — the full prompt is
+> load-bearing (see the 2026-08-14 note in `REFORMATION_ROADMAP.md`: a
+> condensed rewrite had dropped the entire orthodoxy definition).
+
+**A5 — tenancy model, needs an architectural decision first.** Function slugs are
+`kgfcm-*` and `C.appId` is `kgfcm`. True multi-tenant means either one shared
+deployment keyed by tenant, or one Supabase project per tenant. Not a
+find-and-replace. Decide before touching slugs.
+
+### B. Desktop = platform view, mobile = app view
+
+**Already in place** (shipped `54feea7`): `#app` is a 430px phone column
+(`:46`); at `@media (min-width:1024px)` it widens to 1080px (`:109`), standard
+screens keep a 680px readable column, and the prayer/wins/announcements/team
+feeds become a `repeat(auto-fill,minmax(280px,1fr))` grid. The bishop dashboard
+already has its own `768px` / `480px` handling (`:365`, `:386`). Breakpoints
+currently defined: 500, 1024, and dashboard-side 600/768/480.
+
+**What is missing:** desktop still reads as a *widened phone*, not a platform.
+To close that:
+
+- Persistent **side navigation** on `≥1024px` in place of the bottom/phone tab bar
+- Genuine multi-column screen layouts (list + detail side by side, e.g. DM
+  thread list beside the conversation, pastor list beside the drill-down)
+- Denser typography and spacing scale at desktop sizes
+- Keep everything `<1024px` byte-identical to today — the phone experience is
+  the app view and must not regress
+
+> **Caution:** this touches every screen's layout in a single 5,600-line file.
+> Start it fresh, not at the end of a long session. Verify by loading the page
+> at 390px, 768px, 1280px and 1920px before committing.
+
+### C. Carried over from 2026-08-14 — small, unblocked
+
+- **`SB_SECRET_KEY` holds a `sb_publishable_` key.** Dashboard fix: set it to a
+  genuine `sb_secret_…` key. Keep **both** it and `SUPABASE_SERVICE_ROLE_KEY`
+  populated — the two-key fallback is intended and stays until the legacy model
+  is fully retired. See `REFORMATION_ROADMAP.md` I1.
+- **`pg_net` cron still on a legacy JWT.** Vault secret `kgfcm_service_role` is
+  a legacy JWT (219 chars). Not a value swap: `kgfcm-devotion-generate-v2`
+  identifies the cron by *decoding* that bearer (`claims.role === 'service_role'`),
+  so an opaque key fails `decodeJwtClaims` and hits the `Invalid JWT` 401. Needs
+  an auth redesign — own session.
+- **Delete the `kgfcm-deploy-smoke-test` function.** Retired to a 410 stub; reads
+  nothing from the environment. Safe to remove from the dashboard.
+- **Gladys Bowden-Brown** (`ladyofpraize@hotmail.com`) is provisioned and active
+  but has never signed in (`auth_user_id` null). Bishop taps **Email PIN** in the
+  Admins tab and she receives working 6 digits.
+- **Admins tab discoverability.** It is 10th of 12 in a horizontally scrolling
+  strip on mobile with only a 2px scrollbar as a cue. Worth a scroll affordance.
 
 ---
 
@@ -75,7 +152,13 @@ See `REFORMATION_ROADMAP.md` for the full list with scope/rationale.
 
 ---
 
-## 🚨 RESUME HERE (next Claude Code session) 🚨
+## ✅ RESUME HERE — SUPERSEDED 2026-08-14 (kept for history)
+
+> **This section is out of date.** The MCP OAuth issue it describes is resolved —
+> the project-scoped Supabase connector authenticates and was used throughout the
+> 2026-08-14 session to read the schema, apply migrations, and deploy functions.
+> The commit referenced below is long superseded. For current work see
+> **NEXT UP — white-label + platform/app views** at the top of this file.
 
 All HTML/JS/SQL changes are **written and pushed**. Latest commit: `f795974`.
 Everything that's left is **Supabase-side execution** that the previous session
