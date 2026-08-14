@@ -4206,9 +4206,11 @@ async function addAdmin(){
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){showErr('admin-err','Please enter a valid email.');return;}
   if(!pin || !/^\d{6}$/.test(pin)){showErr('admin-err','PIN must be exactly 6 digits.');return;}
   try {
-    // create_admin() is a SECURITY DEFINER SQL RPC that checks is_bishop(),
-    // bcrypt-hashes the PIN, and inserts the row. The plaintext PIN never
-    // crosses the column GRANT layer; the bishop's JWT authorizes the call.
+    // create_admin() is a SECURITY DEFINER SQL RPC that bcrypt-hashes the PIN
+    // and inserts the row. The plaintext PIN never crosses the column GRANT
+    // layer; the bishop's JWT authorizes the call. The RPC requires
+    // app_metadata.role = 'bishop' exactly — deliberately NOT is_bishop(),
+    // which also admits admins and would let one admin mint another.
     const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/create_admin`,{
       method:'POST', headers:SB_HDR(),
       body:JSON.stringify({p_email:email, p_name:name, p_pin:pin}),
