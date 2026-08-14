@@ -8,8 +8,44 @@
 - `PHASE 2` = queued for post-handoff (after Bishop Sasser uses v1 for a week or two)
 - `LATER` = valuable but not reformation-critical
 - `SKIP` = already covered or premature
+- `DEADLINE` = infrastructure/security work with a hard external date — not a feature, but will break the app if ignored
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-07-04
+
+---
+
+## ⏳ Infrastructure deadlines — not features, but hard dates
+
+### I1. Supabase legacy API key end-of-life (anon / service_role JWTs)
+**Status:** `DEADLINE` — **hard cutoff: end of 2026** (~6 months out as of 2026-07-04)
+
+**What's happening (verified against Supabase live docs, 2026-07-04):**
+Supabase replaced the old key model. The legacy `anon` and `service_role` keys are **JWTs signed by the project's JWT secret**; they are *"no longer recommended"* but **keep working until the end of 2026**. The new keys — `sb_publishable_…` (replaces `anon`) and `sb_secret_…` (replaces `service_role`) — are **opaque, non-JWT tokens** that can be rotated/revoked independently.
+
+Reference docs:
+- Migrating to publishable and secret API keys — `/docs/guides/getting-started/migrating-to-new-api-keys`
+- Understanding API keys — `/docs/guides/getting-started/api-keys`
+- JWT Signing Keys — `/docs/guides/auth/signing-keys`
+
+**Why this bites us specifically:**
+The new `sb_secret_…`/`sb_publishable_…` keys are **not JWTs**, and several paths only accept a JWT-format bearer:
+- **PostgREST** returns **401** for a non-JWT `Authorization: Bearer` (supabase-js hands the key straight through). This is documented in-code across the edge functions (e.g. `kgfcm-pin-login`, `kgfcm-checkin-remind`, `kgfcm-audit`, `kgfcm-push-send`).
+- **`pg_net` / Database Webhooks** reject non-JWT bearers — the secret key must go on the `apikey` header instead.
+
+That is exactly why every edge function resolves its backend key as
+`Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")` —
+**JWT-format `service_role` first, on purpose**, because the opaque `sb_secret_` key would 401 on the PostgREST/pg_net bearer path today. This is deliberate and correct *for now*, but it is a dependency on a key type that dies end of 2026.
+
+**Already done (no action needed):**
+- Client (`kg-pastoral-network.html`) already migrated to the **publishable** key only; the legacy anon JWT was removed (see the `SEC-8` note in the config block). Publishable = same low anon privileges, RLS behaves identically, per-user Auth JWTs unaffected.
+
+**Still to migrate before end of 2026 (auth-critical — plan deliberately, do NOT change casually):**
+The edge functions' backend key path. Options, in preference order:
+1. **Move backend calls onto the new key model correctly** — pass `sb_secret_…` on the **`apikey` header** (not `Authorization: Bearer`) for PostgREST/`pg_net` calls, per the migration guide. Verify each function's REST + `net.http_post` call sites.
+2. **Adopt the new JWT Signing Keys system** (asymmetric) so edge functions verify/issue JWTs without the Auth server in the hot path — larger change, best long-term security/performance.
+3. **Wait for Supabase to close the gap** — PostgREST may start accepting the new key format as a bearer before EOL. Do not rely on this; track it, but plan as if it won't happen.
+
+**Trigger:** schedule this no later than **Q3 2026** so it's tested well before the end-of-year cutoff. When Supabase disables legacy keys, any function still sending the JWT `service_role` key as a bearer will start returning 401 — i.e. logins, check-in reminders, audit writes, and push sends would break for every pastor.
 
 ---
 
