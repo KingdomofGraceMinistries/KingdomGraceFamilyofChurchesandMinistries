@@ -10,6 +10,12 @@
 //               could already trigger a pastor reset before this
 //               endpoint existed; narrowing it here would remove a
 //               capability they have today.
+//   service_role → allowed for either, as a trusted server context
+//               (pg_net, scheduled jobs). This adds no privilege: a
+//               holder of that key can already write pin_bcrypt
+//               directly. It only lets server-side automation reuse
+//               this audited, bcrypted, email-only path rather than
+//               hand-rolling a weaker one. Audited as "service-role".
 //
 // Why this exists separately from kgfcm-pin-reset: that flow
 // emails an 8-hex reset TOKEN, which the recipient must then
@@ -55,7 +61,13 @@ const MIN_RESPONSE_MS  = 600;
 Deno.serve(async (req: Request) => {
   const started = performance.now();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
-  if (!isOriginAllowed(req))    return jsonResponse(req, { error: "Forbidden origin" }, 403);
+  // Server-to-server callers (pg_net) send no Origin header. CORS is a browser
+  // control, and those callers are authenticated by the service-role JWT below.
+  // Only reject when an Origin IS present and unallowed. Same pattern as
+  // kgfcm-checkin-remind, kgfcm-push-send and kgfcm-devotion-generate-v2.
+  if (req.headers.get("origin") && !isOriginAllowed(req)) {
+    return jsonResponse(req, { error: "Forbidden origin" }, 403);
+  }
   if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -71,7 +83,16 @@ Deno.serve(async (req: Request) => {
   if (!claims) return jsonResponse(req, { error: "Invalid JWT" }, 401);
   const appMeta = (claims.app_metadata ?? {}) as Record<string, unknown>;
   const actorRole = typeof appMeta.role === "string" ? appMeta.role : "";
-  const actorId = typeof claims.sub === "string" ? claims.sub : "unknown";
+  // Trusted server context: pg_net / scheduled jobs presenting the project's
+  // service-role token. Granting it here adds no privilege — a holder of that
+  // key can already write pin_bcrypt directly — it only lets server-side
+  // automation use the same audited, bcrypted, email-only path as the UI
+  // instead of hand-rolling a weaker one. Same allowance kgfcm-devotion-
+  // generate-v2 makes for the cron.
+  const isServiceRole = claims.role === "service_role";
+  const actorId = isServiceRole
+    ? "service-role"
+    : (typeof claims.sub === "string" ? claims.sub : "unknown");
 
   const bodyRaw = await req.json().catch(() => ({} as Record<string, unknown>));
   const adminId  = String(bodyRaw.admin_id  ?? "").trim();
@@ -89,9 +110,9 @@ Deno.serve(async (req: Request) => {
   //   rf_pastors — bishop or admin. Admins already manage pastors and could
   //                already trigger a pastor reset before this endpoint existed;
   //                narrowing that here would remove a capability they have.
-  const allowed = targetTable === "rf_admins"
+  const allowed = isServiceRole || (targetTable === "rf_admins"
     ? actorRole === "bishop"
-    : (actorRole === "bishop" || actorRole === "admin");
+    : (actorRole === "bishop" || actorRole === "admin"));
   if (!allowed) {
     await audit(supa, "ADMIN_PIN_ISSUE_DENIED", { actor_id: actorId, ip_address: ip, role: actorRole, target_table: targetTable, target_id: targetId });
     return jsonResponse(req, { error: "Forbidden" }, 403);
