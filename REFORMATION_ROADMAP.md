@@ -49,7 +49,36 @@ The edge functions' backend key path. Options, in preference order:
 
 ---
 
-#### Update 2026-08-14 — trigger reached, and the blocking premise no longer holds
+#### Update 2026-08-14 (second pass) — the running system, not the assumptions
+
+**Everything in the first pass below was written without inspecting the deployed environment. Read this section instead; the one after it is kept only to show what was assumed and why it was wrong.**
+
+Audited the live edge-function environment by deploying a throwaway diagnostic that reported key **formats only**, never values:
+
+| Env var | Actual format |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | **`sb_secret_…`** (opaque, new model) |
+| `SB_SECRET_KEY` | **`sb_publishable_…`** ← wrong key in this variable |
+| `SUPABASE_ANON_KEY` | `sb_publishable_…` |
+| `SB_PUBLISHABLE_KEY` | `sb_publishable_…` |
+
+**1. The edge-function half of I1 is already done.** The platform injects a new-format `sb_secret_` key under the legacy variable *name*. Since every function resolves `SUPABASE_SERVICE_ROLE_KEY` first, all 12 have been running on the new key model already — and logins, audit writes and devotion generation all work. That is direct proof that opaque secret keys work against **both PostgREST and GoTrue**, which is exactly what the original entry said was blocking. No code change is needed for the functions.
+
+**2. `SB_SECRET_KEY` is misconfigured and is a live hazard.** It holds a *publishable* key. Every function reads `SUPABASE_SERVICE_ROLE_KEY ?? SB_SECRET_KEY`, so if the first were ever empty, all 12 would silently fall through to **anon privileges** — audit writes rejected, service-role work blocked by RLS, logins failing in confusing ways. A fallback should never degrade to a weaker credential.
+
+> **Action required (dashboard):** either clear `SB_SECRET_KEY`, or set it to a real `sb_secret_…` key. Clearing it is the safer default — with it unset the fallback resolves to `""`, which fails loudly and immediately instead of half-working with the wrong privileges.
+
+**3. Do NOT invert the resolution order.** The first pass below proposed `SB_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`. Against the actual environment that would have switched all 12 functions to the publishable key instantly and taken production down. The current order is correct and should stay until `SB_SECRET_KEY` is fixed.
+
+**4. The only genuine remaining exposure is `pg_net`.** Vault secret `kgfcm_service_role` is confirmed a **legacy JWT** (219 chars, three segments) and is what the `kgfcm_daily_devotion` cron sends as its bearer. It dies with the legacy key model.
+
+This is not a value swap. `kgfcm-devotion-generate-v2` identifies the cron caller by *decoding* the bearer and checking `claims.role === "service_role"`. Handed an opaque `sb_secret_` key, `decodeJwtClaims()` returns null and the request is refused by the `Invalid JWT` 401. Migrating the cron therefore needs a deliberate auth redesign — options include a shared secret header verified in-function, or moving the schedule off `pg_net` onto a Supabase scheduled function. **Own session, not a tail-end change.**
+
+**Net:** I1 is far smaller than written. One dashboard fix (item 2), one scoped redesign (item 4). The rest is already complete.
+
+---
+
+#### Update 2026-08-14 (first pass — SUPERSEDED, kept for the record)
 
 **Retested against the live project.** The claim above — that a non-JWT key 401s on the PostgREST bearer path — did not reproduce. Sending the publishable key (also opaque, non-JWT) as `Authorization: Bearer` against `/rest/v1/rf_devotions` returned:
 
