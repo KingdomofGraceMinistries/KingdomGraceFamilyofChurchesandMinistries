@@ -49,6 +49,43 @@ The edge functions' backend key path. Options, in preference order:
 
 ---
 
+#### Update 2026-08-14 — trigger reached, and the blocking premise no longer holds
+
+**Retested against the live project.** The claim above — that a non-JWT key 401s on the PostgREST bearer path — did not reproduce. Sending the publishable key (also opaque, non-JWT) as `Authorization: Bearer` against `/rest/v1/rf_devotions` returned:
+
+```
+HTTP 401  {"code":"42501","message":"permission denied for table rf_devotions"}
+```
+
+`42501` is a **Postgres grant** error. A request rejected for an unparseable JWT never reaches the grant check — it fails earlier, in the auth layer. So the key was accepted and resolved to a role, and was then correctly denied by table permissions. Option 3 above ("wait for Supabase to close the gap") appears to have happened.
+
+This has not been confirmed with an actual `sb_secret_…` key, because secret keys are not exposed through the MCP connection. Treat it as strong evidence, not proof, until step 2 below passes.
+
+**Consequence:** this is now most likely a config change, not the redesign options 1 and 2 imply.
+
+**The real risk is different from what was written.** All 12 functions resolve the key as:
+
+```ts
+Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY")
+```
+
+The platform injects `SUPABASE_SERVICE_ROLE_KEY` automatically, so it always wins. That means the `SB_SECRET_KEY` fallback **can never be exercised while legacy keys still work** — it activates for the first time on the day Supabase disables them, untested, across every function at once. An untested fallback on the login path is the actual hazard here, not the bearer format.
+
+**Fix: invert the order** to `SB_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`. Setting the env var then becomes a deliberate, testable cutover, and unsetting it is an instant rollback. That inversion is inert while `SB_SECRET_KEY` is unset — behaviour stays byte-identical to today — so it can ship ahead of the cutover safely.
+
+**Sequence (steps 1 and 3 need dashboard access; they cannot be done over MCP):**
+
+1. **Create the secret key** — Dashboard → Project Settings → API Keys → create `sb_secret_…`. Do not paste it into a repo, a commit, or a chat.
+2. **Set it as an edge-function secret** named `SB_SECRET_KEY` (Edge Functions → Secrets, or `supabase secrets set`).
+3. **Prove it on one low-risk function first** — `kgfcm-audit` is the right candidate: it writes one table, is not on the login path, and a failure is visible without locking anyone out. Invert the order there, deploy, exercise it, confirm the audit row lands.
+4. **Then roll out** the inversion to the remaining 11 and redeploy.
+5. **Verify the GoTrue admin paths separately.** `kgfcm-pin-login` calls `auth.admin.createUser`, `generateLink` and `listUsers`. Those hit GoTrue, not PostgREST, and are the least certain part of this migration — PostgREST accepting the key does not prove GoTrue does. Test a real PIN login before considering the cutover done.
+6. **Do not remove** `SUPABASE_SERVICE_ROLE_KEY` until every function has run on the secret key. It is the rollback.
+
+**Also check `pg_net`.** The `kgfcm_daily_devotion` cron reads `kgfcm_service_role` from vault and sends it as a bearer (migration `20260530180000`). That vault secret is a separate copy of the legacy key and will die with it — it is not covered by any edge-function env var change.
+
+---
+
 ## Tier 1 — Core reformation features
 
 ### 1. Doctrinal Statement / Core Beliefs page
