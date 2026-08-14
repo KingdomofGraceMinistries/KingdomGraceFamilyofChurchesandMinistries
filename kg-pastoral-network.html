@@ -98,6 +98,46 @@ html[data-theme="cream"] body{
   }
 }
 
+/* Laptop / desktop platform view. The pastor app is a 430px phone column;
+   on a wide screen it becomes a framed platform window (the Bishop dashboard
+   is already full-width). Standard screens keep a centered readable column so
+   forms and prose don't stretch; the clean card feeds (prayer, wins,
+   announcements, team) flow into a responsive multi-column grid to use the
+   width. The home hub, forms, and the 1:1 chat thread stay single-column.
+   Everything below 1024px is unchanged. */
+@media (min-width:1024px){
+  #app{max-width:1080px;}
+  /* Centered readable column for standard screens. Excludes the chat thread,
+     which manages its own bubble layout and is handled separately below. */
+  .screen:not(#s-dm) .scroll > *{
+    max-width:680px;
+    margin-left:auto;
+    margin-right:auto;
+  }
+  /* Card feeds fan out into 2–3 responsive columns of .pw-item cards. The
+     higher-specificity prefix intentionally overrides the readable-column cap
+     above so these lists can use the full width. */
+  .screen:not(#s-dm) .scroll > #prayer-list,
+  .screen:not(#s-dm) .scroll > #wins-list,
+  .screen:not(#s-dm) .scroll > #ann-list,
+  .screen:not(#s-dm) .scroll > #team-responses{
+    max-width:980px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+    align-items:start;
+    gap:10px;
+  }
+  #prayer-list .pw-item,
+  #wins-list .pw-item,
+  #ann-list .pw-item,
+  #team-responses .pw-item{margin-bottom:0;}
+  /* 1:1 chat: hold the thread and the composer's input row in a centered
+     column instead of stretching bubbles across the full window. The composer
+     bar keeps its full-width background. */
+  #dm-list{max-width:760px;margin-left:auto;margin-right:auto;}
+  #s-dm > div:last-child > div:last-child{max-width:760px;margin-left:auto;margin-right:auto;}
+}
+
 /* PASTOR — SCREENS */
 .screen{display:none;flex-direction:column;flex:1;overflow:hidden;animation:fadeIn 0.22s ease;}
 .screen.active{display:flex;}
@@ -4028,8 +4068,8 @@ function loadHelp(){
       <div style="font-size:12px;color:var(--mist);margin-bottom:24px">Everything you need to manage your pastoral network.</div>
 
       ${helpSection('1','Logging In','How to access the dashboard',`
-        <p><strong style="color:var(--gold)">Bishop:</strong> Tap <strong>"Bishop Access"</strong> on the login screen and enter your 6-digit PIN.</p>
-        <p><strong style="color:var(--sky)">Admin:</strong> Tap <strong>"Admin Access"</strong> and enter the PIN the Bishop gave you.</p>
+        <p><strong style="color:var(--gold)">Bishop:</strong> Tap <strong>"Bishop Access"</strong> on the login screen and enter your email address and your 6-digit PIN.</p>
+        <p><strong style="color:var(--sky)">Admin:</strong> Tap <strong>"Admin Access"</strong> and enter the email address the Bishop registered for you, plus the PIN he gave you.</p>
         <p>You'll be taken to the dashboard. Admins see everything the Bishop sees <strong>except</strong> private prayer requests.</p>
       `)}
 
@@ -4048,9 +4088,9 @@ function loadHelp(){
       ${isBishop()?helpSection('3','Adding an Admin','Give someone access to help manage the network',`
         <p>Admins can send invites, post announcements, message pastors, and view the dashboard. They <strong>cannot</strong> see private prayer requests.</p>
         <p><strong>Step 1:</strong> Go to the <strong>Admins</strong> tab.</p>
-        <p><strong>Step 2:</strong> Enter the admin's <strong>name</strong> and choose a <strong>6-digit PIN</strong> for them.</p>
-        <p><strong>Step 3:</strong> Tap <strong>"Add Admin"</strong> and share the PIN with them.</p>
-        <p>To remove an admin, tap the red <strong>"Remove"</strong> button next to their name.</p>
+        <p><strong>Step 2:</strong> Enter the admin's <strong>name</strong>, their <strong>email address</strong>, and choose a <strong>6-digit PIN</strong> for them.</p>
+        <p><strong>Step 3:</strong> Tap <strong>"Add Admin"</strong> and share the PIN with them privately. They sign in with that email and PIN.</p>
+        <p>Each admin row has four actions: <strong>Lock</strong> blocks their sign-in temporarily, <strong>Unlock</strong> restores it, <strong>Reset PIN</strong> emails them a fresh code, and <strong>Remove</strong> deletes the account permanently.</p>
       `):''}
 
       ${helpSection('4','Sending Messages','Private messages and blasts',`
@@ -4273,15 +4313,15 @@ function renderPastor(){
         <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--br)">
           <div style="font-weight:600;color:var(--frost);margin-bottom:4px">&#x1F522; Pastor Login</div>
           Your Bishop or church admin will send you a <strong style="color:var(--frost)">text message with a link</strong>. Tap the link, enter your name, email, and choose a 6-digit PIN. That's it — you're in.<br><br>
-          After that, open the app and tap <strong style="color:var(--frost)">"Sign in with PIN"</strong> and enter your 6 digits. If your phone supports Face ID or Touch ID, it may sign you in automatically.
+          After that, open the app and tap <strong style="color:var(--frost)">"Sign in with PIN"</strong> and enter your email and your 6 digits. If your phone supports Face ID or Touch ID, it may sign you in automatically.
         </div>
         <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:0.5px solid var(--br)">
           <div style="font-weight:600;color:var(--gold);margin-bottom:4px">&#x1F451; Bishop Access</div>
-          Tap <strong style="color:var(--frost)">"Bishop Access"</strong> and enter your master PIN. This opens the full oversight dashboard where you can view all pastors, send messages, manage invites, and monitor the health of your network.
+          Tap <strong style="color:var(--frost)">"Bishop Access"</strong> and enter your email address and master PIN. This opens the full oversight dashboard where you can view all pastors, send messages, manage invites, and monitor the health of your network.
         </div>
         <div>
           <div style="font-weight:600;color:var(--sky);margin-bottom:4px">&#x1F527; Admin Access</div>
-          If the Bishop has given you admin access, tap <strong style="color:var(--frost)">"Admin Access"</strong> and enter the PIN the Bishop gave you. As an admin you can manage invites, send messages, post announcements, and view pastor profiles — everything the Bishop can do except view private prayer requests.
+          If the Bishop has given you admin access, tap <strong style="color:var(--frost)">"Admin Access"</strong> and enter the email address he registered for you, plus the PIN he gave you. As an admin you can manage invites, send messages, post announcements, and view pastor profiles — everything the Bishop can do except view private prayer requests.
         </div>
       </div>
     </details>

@@ -25,20 +25,22 @@ A step-by-step guide for managing your pastoral network. Written in plain langua
 
 1. Open the app on your phone or computer
 2. Tap **"Bishop Access"** (the gold crown button)
-3. Enter your **6-digit PIN** using the number pad
+3. Enter your **email address** and your **6-digit PIN**
 4. You'll be taken to the full dashboard
 
 ### Admin Login
 
 1. Open the app
 2. Tap **"Admin Access"** (the blue wrench button)
-3. Enter the **6-digit PIN** that the Bishop gave you
+3. Enter the **email address** the Bishop registered for you and the **6-digit PIN** he gave you
 4. You'll see the dashboard — everything the Bishop sees except private prayer requests
+
+Your email is remembered on that device after your first successful sign-in, so afterwards you only type the PIN.
 
 ### Forgot Your PIN?
 
 - **Bishop**: Your PIN is stored securely in the system. Contact your app administrator or developer to reset it.
-- **Admin**: Ask the Bishop to remove your admin account and add you again with a new PIN.
+- **Admin**: Ask the Bishop to tap **"Reset PIN"** next to your name in the Admins tab. You'll get an emailed code that expires in 30 minutes.
 
 ---
 
@@ -103,9 +105,14 @@ Admins can help you manage the network — sending invites, posting announcement
 
 1. Tap the **"Admins"** tab (Bishop only)
 2. Enter the admin's **full name**
-3. Choose a **6-digit PIN** for them
-4. Tap **"Add Admin"**
-5. **Share the PIN** with them — they'll need it to log in
+3. Enter their **email address** — this is what they sign in with
+4. Choose a **6-digit PIN** for them
+5. Tap **"Add Admin"**
+6. **Share the PIN with them privately** — say it in person or by phone, not in a group chat
+
+### To Lock or Unlock an Admin
+
+Use **Lock** when someone should be kept out temporarily — on leave, or a phone gone missing. Their account and history stay intact. Tap **Unlock** to restore access.
 
 ### To Remove an Admin
 
@@ -113,6 +120,8 @@ Admins can help you manage the network — sending invites, posting announcement
 2. Find the admin you want to remove
 3. Tap the red **"Remove"** button
 4. Confirm — they will no longer be able to log in
+
+Removal is permanent. If the situation is temporary, use **Lock** instead.
 
 ---
 
@@ -221,9 +230,9 @@ A gentle chime plays when a new notification arrives inside the app.
 
 ### "I can't log in"
 
-- Make sure you're entering the correct 6-digit PIN
+- Make sure you're entering both your **email address** and the correct 6-digit PIN — the email must match the one registered for you exactly
 - If you're the Bishop, your PIN is **the one set up in the system** — contact your developer if you've forgotten it
-- If you're an Admin, ask the Bishop to check your account or create a new one
+- If you're an Admin, ask the Bishop to tap **"Reset PIN"** next to your name in the Admins tab. If that doesn't help, your account may be **Locked** — the Bishop can unlock it from the same tab.
 
 ### "I don't see the Admins tab"
 
