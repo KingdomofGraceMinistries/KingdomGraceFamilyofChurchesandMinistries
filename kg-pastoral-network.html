@@ -857,6 +857,11 @@ async function signOutSession(){
 // owns the PIN account; auth.users.email_confirm was set during PIN login
 // so signInWithOtp won't try to create a new user.
 async function sendMagicLink(email){
+  // `create_user: false` is load-bearing and verified against this project's
+  // GoTrue: with it, an email that has no auth account is refused (422
+  // otp_disabled) instead of having an unconfirmed user silently created.
+  // Do not "modernise" it to should_create_user — that key is ignored here,
+  // and the endpoint then falls back to creating the user.
   const r = await fetch(`${C.supabaseUrl}/auth/v1/otp`, {
     method:'POST',
     headers:{'Content-Type':'application/json','apikey':SB_API_KEY()},
@@ -868,7 +873,15 @@ async function sendMagicLink(email){
   });
   if(!r.ok){
     const data = await r.json().catch(()=>({}));
-    throw new Error(data.error_description || data.msg || 'Could not send magic link.');
+    const raw = data.error_description || data.msg || data.error || '';
+    // A magic link can only be sent to someone who already has an auth account,
+    // and that account is created on first PIN sign-in. Say that, rather than
+    // surfacing Supabase's "Signups not allowed for otp", which reads like the
+    // app is broken when it actually means "sign in with your PIN first".
+    if(/signups? not allowed|user not found/i.test(raw)){
+      throw new Error('Sign in with your email and PIN first. Once you have signed in once, the email link and biometric options become available on this device.');
+    }
+    throw new Error(raw || 'Could not send magic link.');
   }
   return true;
 }
