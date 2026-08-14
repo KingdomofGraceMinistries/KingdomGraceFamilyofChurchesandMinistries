@@ -4090,7 +4090,7 @@ function loadHelp(){
         <p><strong>Step 1:</strong> Go to the <strong>Admins</strong> tab.</p>
         <p><strong>Step 2:</strong> Enter the admin's <strong>name</strong>, their <strong>email address</strong>, and choose a <strong>6-digit PIN</strong> for them.</p>
         <p><strong>Step 3:</strong> Tap <strong>"Add Admin"</strong> and share the PIN with them privately. They sign in with that email and PIN.</p>
-        <p>Each admin row has four actions: <strong>Lock</strong> blocks their sign-in temporarily, <strong>Unlock</strong> restores it, <strong>Reset PIN</strong> emails them a fresh code, and <strong>Remove</strong> deletes the account permanently.</p>
+        <p>Each admin row has these actions: <strong>Email PIN</strong> sends them a working 6-digit PIN by email — the quickest way to get someone in, and you never have to see or read out the number. <strong>Reset PIN</strong> instead emails a code they exchange for a PIN of their own choosing. <strong>Lock</strong> blocks their sign-in temporarily, <strong>Unlock</strong> restores it, and <strong>Remove</strong> deletes the account permanently.</p>
       `):''}
 
       ${helpSection('4','Sending Messages','Private messages and blasts',`
@@ -4178,6 +4178,7 @@ async function loadManageAdmins(){
         ${a.status==='active'
           ? `<button class="pw-act" onclick="lockAdmin('${a.id}',this)" style="flex-shrink:0">Lock</button>`
           : `<button class="pw-act on" onclick="unlockAdmin('${a.id}',this)" style="flex-shrink:0">Unlock</button>`}
+        <button class="pw-act on" onclick="bishopIssueAdminPin('${a.id}')" style="flex-shrink:0">Email PIN</button>
         <button class="pw-act" onclick="bishopResetAdminPin('${a.id}')" style="flex-shrink:0">Reset PIN</button>
         <button class="pw-act danger" onclick="removeAdmin('${a.id}',this)" style="flex-shrink:0">Remove</button>
       </div>`).join(''):'<div class="empty">No admins added yet.</div>'}`;
@@ -4226,6 +4227,30 @@ async function unlockAdmin(id,btn){
     audit('ADMIN_UNLOCKED',{table:'rf_admins',targetId:id});
     loadManageAdmins();
   } catch(e){ btn.textContent='Error — retry'; }
+}
+
+// Issue a working 6-digit PIN and email it straight to the admin. The PIN is
+// generated and bcrypted inside the edge function and returned to nobody — it
+// is not in the response, the audit log, or this screen, so the bishop never
+// has to read a credential aloud. Sent with the bishop's session token rather
+// than callEdgeFn(), which uses the publishable key and would arrive as anon.
+async function bishopIssueAdminPin(adminId){
+  if(!confirm('Email a new 6-digit PIN to this admin?\n\nTheir current PIN stops working immediately, and any reset code already sent to them is cancelled.')) return;
+  try {
+    const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey':SB_API_KEY(),
+        'Authorization':'Bearer '+ST.session.access_token,
+      },
+      body: JSON.stringify({ admin_id: adminId }),
+    });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
+    audit('ADMIN_PIN_ISSUE_REQUESTED',{table:'rf_admins', targetId:adminId});
+    alert(`A 6-digit PIN has been emailed to ${data.email}.\n\nThey sign in with that email address and the PIN. You do not need to see it — ask them to check their inbox.`);
+  } catch(e){ alert(e.message || 'Could not send the PIN.'); }
 }
 
 async function bishopResetAdminPin(adminId){

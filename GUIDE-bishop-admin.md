@@ -110,6 +110,16 @@ Admins can help you manage the network — sending invites, posting announcement
 5. Tap **"Add Admin"**
 6. **Share the PIN with them privately** — say it in person or by phone, not in a group chat
 
+### To Send Someone Their PIN
+
+Tap **"Email PIN"** next to their name. A 6-digit PIN is generated and emailed straight to them, and they can sign in with it right away using their email address and that PIN.
+
+You never see the PIN, and you don't need to — it goes only to their inbox, so there's nothing to read out over the phone or type into a message. Use this whenever someone is locked out or newly added.
+
+**"Reset PIN"** does something slightly different: it emails a one-time code that they exchange for a PIN they pick themselves. Use that one if they'd rather choose their own number.
+
+Either way, their old PIN stops working the moment you tap the button.
+
 ### To Lock or Unlock an Admin
 
 Use **Lock** when someone should be kept out temporarily — on leave, or a phone gone missing. Their account and history stay intact. Tap **Unlock** to restore access.
