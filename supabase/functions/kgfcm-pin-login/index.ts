@@ -233,10 +233,19 @@ async function ensureAuthUser(
     userId = created.data.user.id;
   }
   // Link the auth user back to the profile row.
+  //
+  // candidate.user_id is the deciding factor, NOT candidate.table. The bishop
+  // arrives with table="config" (his credential lives in rf_network_config)
+  // but user_id set to his existing rf_admins row, found by is_bishop in
+  // findLoginCandidate. Keying the update on table alone missed that case and
+  // fell through to the insert below, so every bishop login re-attempted a
+  // duplicate rf_admins row and his auth_user_id was never written back.
   if (candidate.table === "rf_pastors" && candidate.user_id) {
-    await supa.from("rf_pastors").update({ auth_user_id: userId }).eq("id", candidate.user_id);
-  } else if (candidate.table === "rf_admins" && candidate.user_id) {
-    await supa.from("rf_admins").update({ auth_user_id: userId }).eq("id", candidate.user_id);
+    const upd = await supa.from("rf_pastors").update({ auth_user_id: userId }).eq("id", candidate.user_id);
+    if (upd.error) await audit(supa, "AUTH_LINK_FAILED", { target_table: "rf_pastors", target_id: candidate.user_id, error: String(upd.error) });
+  } else if (candidate.user_id) {
+    const upd = await supa.from("rf_admins").update({ auth_user_id: userId }).eq("id", candidate.user_id);
+    if (upd.error) await audit(supa, "AUTH_LINK_FAILED", { target_table: "rf_admins", target_id: candidate.user_id, error: String(upd.error) });
   } else if (candidate.role === "bishop" && candidate.table === "config") {
     // Bishop has no rf_admins row yet — create one so we have a stable profile.
     // pin_hash is legacy-NOT NULL on rf_admins; supply a placeholder since the
@@ -250,10 +259,12 @@ async function ensureAuthUser(
       pin_bcrypt: candidate.pin_bcrypt,
       pin_hash: "migrated-to-bcrypt",
     }).select("id").single();
-    if (!ins.error && ins.data) {
-      candidate.user_id = ins.data.id;
-    }
+    if (ins.error) await audit(supa, "AUTH_LINK_FAILED", { target_table: "rf_admins", target_id: "bishop", error: String(ins.error) });
+    else if (ins.data) candidate.user_id = ins.data.id;
   }
+  // Link failures are audited, never thrown: a failed back-link degrades the
+  // next login to another lazy bootstrap, whereas throwing here would lock the
+  // caller out of an otherwise valid session.
   return userId;
 }
 
