@@ -49,15 +49,35 @@ feeds become a `repeat(auto-fill,minmax(280px,1fr))` grid. The bishop dashboard
 already has its own `768px` / `480px` handling (`:365`, `:386`). Breakpoints
 currently defined: 500, 1024, and dashboard-side 600/768/480.
 
-**What is missing:** desktop still reads as a *widened phone*, not a platform.
-To close that:
+**SCOPE DECISION (2026-08-14):** platform chrome applies to the **pastor app
+only**. The bishop dashboard stays exactly as it is.
 
-- Persistent **side navigation** on `≥1024px` in place of the bottom/phone tab bar
-- Genuine multi-column screen layouts (list + detail side by side, e.g. DM
-  thread list beside the conversation, pastor list beside the drill-down)
-- Denser typography and spacing scale at desktop sizes
-- Keep everything `<1024px` byte-identical to today — the phone experience is
+| In scope | Out of scope |
+|---|---|
+| `#app` (`:46`) — the 430px phone column | `#bishop-app` (`:150`) |
+| `.screen` (`:142`), `.scroll` (`:145`) | `.b-topbar` (`:154`), `.b-nav` (`:159`), `.b-tab` (`:160`) |
+| `.tnav*` (`:237`–`:242`) — the pastor top nav | `.b-body` (`:164`), `.b-panel` (`:165`) |
+| The `@media (min-width:1024px)` block at `:108` | The dashboard's own `768`/`480` blocks (`:365`, `:386`) |
+
+Do not touch any `.b-*` rule or `#bishop-app`. The dashboard is already a
+full-viewport desktop layout with its own responsive handling and is not part of
+this work.
+
+**What is missing:** the pastor app on desktop still reads as a *widened phone*,
+not a platform. To close that:
+
+- Persistent **side navigation** on `≥1024px` replacing the `.tnav` top bar,
+  driven by the same `go()` screen switching so navigation logic is unchanged
+- Genuine multi-column layouts within a screen (list + detail side by side —
+  e.g. the DM thread list beside the conversation)
+- Desktop typography and spacing scale
+- Keep everything `<1024px` byte-identical to today — the phone experience *is*
   the app view and must not regress
+
+Because the pastor app and the dashboard are separate shells (`#app` vs
+`#bishop-app`, toggled in `launchBishopDashboard()` / `bishopViewApp()`), this
+is a contained change: it does not rewrite the navigation model, and a bishop
+viewing the pastor app gets the same platform chrome any pastor does.
 
 > **Caution:** this touches every screen's layout in a single 5,600-line file.
 > Start it fresh, not at the end of a long session. Verify by loading the page
