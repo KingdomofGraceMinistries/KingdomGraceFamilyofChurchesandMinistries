@@ -1431,6 +1431,23 @@ async function submitPin(){
   }
 }
 
+// Open the PIN-reset screen. s-forgot-pin has existed since the reset flow was
+// built but nothing ever navigated to it, so the Reset Code / New PIN fields
+// were unreachable and every code emailed by kgfcm-pin-reset had nowhere to be
+// entered. The only link here offered a magic link, which cannot work for
+// anyone who has never signed in — they have no auth.users row yet, so
+// /auth/v1/otp refuses — i.e. precisely the people needing a reset.
+// Carries the typed email across so it is not entered twice.
+function openPinReset(){
+  const typed = ($('pin-email')?.value || '').trim().toLowerCase();
+  const target = $('reset-email');
+  if(target) target.value = typed || localStorage.getItem(LAST_EMAIL_KEY) || '';
+  const sec = $('reset-token-section'); if(sec) sec.style.display = 'none';
+  hideErr('reset-err');
+  const ok = $('reset-ok'); if(ok){ ok.style.display = 'none'; ok.textContent = ''; }
+  go('s-forgot-pin');
+}
+
 async function requestMagicLink(){
   const email = ($('pin-email')?.value || '').trim().toLowerCase();
   if(!email){ showErr('pin-err','Enter your email first.'); return; }
@@ -4386,7 +4403,10 @@ function renderPastor(){
         <button class="tnav-btn" type="button" onclick="go('s-login')">← Back</button>
       </div>
     </form>
-    <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">Forgot your PIN? <span style="color:var(--gold);cursor:pointer" onclick="requestMagicLink()">Email me a magic link →</span></div>
+    <div id="forgot-pin-link" style="margin-top:12px;text-align:center;font-size:12px;color:var(--ash);display:none">
+      Forgot your PIN? <span style="color:var(--gold);cursor:pointer" onclick="openPinReset()">Reset it with an emailed code →</span>
+      <div style="margin-top:8px">Signed in on this device before? <span style="color:var(--gold);cursor:pointer" onclick="requestMagicLink()">Email me a magic link →</span></div>
+    </div>
   </div>
 </div>
 
