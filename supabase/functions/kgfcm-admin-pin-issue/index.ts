@@ -1,8 +1,15 @@
 // ============================================================
 // kgfcm-admin-pin-issue — Issue a working 6-digit PIN to an
-// admin and email it to them directly.
+// admin or a pastor and email it to them directly.
 //
-// Bishop-only. POST { admin_id }; verify_jwt: true.
+// POST { admin_id } or { pastor_id } — exactly one. verify_jwt: true.
+//
+//   admin_id  → bishop only. Minting a fellow administrator's
+//               credential is not a delegated power.
+//   pastor_id → bishop or admin. Admins already manage pastors and
+//               could already trigger a pastor reset before this
+//               endpoint existed; narrowing it here would remove a
+//               capability they have today.
 //
 // Why this exists separately from kgfcm-pin-reset: that flow
 // emails an 8-hex reset TOKEN, which the recipient must then
@@ -19,10 +26,10 @@
 // RPC (bf, cost 10) that the reset-confirm flow already uses.
 //
 // Flow:
-//   1. CORS + bishop JWT claim check.
+//   1. CORS + JWT claim check against the bar for the target type.
 //   2. Rate-limit per target email + per IP.
-//   3. Resolve the rf_admins row. Refuse the bishop's own row —
-//      his credential lives in rf_network_config, so writing
+//   3. Resolve the row. Refuse the bishop's own row — his
+//      credential lives in rf_network_config, so writing
 //      pin_bcrypt here would not change his login and would leave
 //      a misleading digest behind.
 //   4. CSPRNG 6-digit PIN, rejection-sampled to avoid modulo bias.
@@ -63,74 +70,86 @@ Deno.serve(async (req: Request) => {
   const claims = decodeJwtClaims(jwt);
   if (!claims) return jsonResponse(req, { error: "Invalid JWT" }, 401);
   const appMeta = (claims.app_metadata ?? {}) as Record<string, unknown>;
+  const actorRole = typeof appMeta.role === "string" ? appMeta.role : "";
   const actorId = typeof claims.sub === "string" ? claims.sub : "unknown";
-  // Bishop only, deliberately stricter than is_bishop() (which also admits
-  // admins). Issuing another user's credential is not a delegated power.
-  if (appMeta.role !== "bishop") {
-    await audit(supa, "ADMIN_PIN_ISSUE_DENIED", { actor_id: actorId, ip_address: ip, role: typeof appMeta.role === "string" ? appMeta.role : "" });
+
+  const bodyRaw = await req.json().catch(() => ({} as Record<string, unknown>));
+  const adminId  = String(bodyRaw.admin_id  ?? "").trim();
+  const pastorId = String(bodyRaw.pastor_id ?? "").trim();
+  if ((adminId && pastorId) || (!adminId && !pastorId)) {
+    await padTo(started, MIN_RESPONSE_MS);
+    return jsonResponse(req, { error: "Supply exactly one of admin_id or pastor_id" }, 400);
+  }
+  const targetTable = adminId ? "rf_admins" : "rf_pastors";
+  const targetId    = adminId || pastorId;
+
+  // Two different bars, on purpose:
+  //   rf_admins  — bishop only. Minting a fellow administrator's credential is
+  //                not a delegated power, and the Admins tab is bishop-only.
+  //   rf_pastors — bishop or admin. Admins already manage pastors and could
+  //                already trigger a pastor reset before this endpoint existed;
+  //                narrowing that here would remove a capability they have.
+  const allowed = targetTable === "rf_admins"
+    ? actorRole === "bishop"
+    : (actorRole === "bishop" || actorRole === "admin");
+  if (!allowed) {
+    await audit(supa, "ADMIN_PIN_ISSUE_DENIED", { actor_id: actorId, ip_address: ip, role: actorRole, target_table: targetTable, target_id: targetId });
     return jsonResponse(req, { error: "Forbidden" }, 403);
   }
 
   try {
-    const body = await req.json().catch(() => ({} as Record<string, unknown>));
-    const adminId = String(body.admin_id ?? "").trim();
-    if (!adminId) {
-      await padTo(started, MIN_RESPONSE_MS);
-      return jsonResponse(req, { error: "admin_id is required" }, 400);
-    }
-
-    const target = await supa.from("rf_admins")
-      .select("id,full_name,email,status,is_bishop")
-      .eq("id", adminId)
+    const target = await supa.from(targetTable)
+      .select(targetTable === "rf_admins" ? "id,full_name,email,status,is_bishop" : "id,full_name,email,status")
+      .eq("id", targetId)
       .maybeSingle();
     if (target.error || !target.data) {
-      await audit(supa, "ADMIN_PIN_ISSUE_NOT_FOUND", { actor_id: actorId, ip_address: ip, target_table: "rf_admins", target_id: adminId });
+      await audit(supa, "ADMIN_PIN_ISSUE_NOT_FOUND", { actor_id: actorId, ip_address: ip, target_table: targetTable, target_id: targetId });
       await padTo(started, MIN_RESPONSE_MS);
-      return jsonResponse(req, { error: "Admin not found" }, 404);
+      return jsonResponse(req, { error: targetTable === "rf_admins" ? "Admin not found" : "Pastor not found" }, 404);
     }
-    const admin = target.data;
+    const admin = target.data as { id: string; full_name?: string; email?: string; status?: string; is_bishop?: boolean };
     if (!admin.email) {
       await padTo(started, MIN_RESPONSE_MS);
-      return jsonResponse(req, { error: "That admin has no email address on file." }, 400);
+      return jsonResponse(req, { error: "That person has no email address on file." }, 400);
     }
     if (admin.is_bishop) {
-      await audit(supa, "ADMIN_PIN_ISSUE_REFUSED_BISHOP", { actor_id: actorId, ip_address: ip, target_table: "rf_admins", target_id: admin.id });
+      await audit(supa, "ADMIN_PIN_ISSUE_REFUSED_BISHOP", { actor_id: actorId, ip_address: ip, target_table: targetTable, target_id: admin.id });
       await padTo(started, MIN_RESPONSE_MS);
       return jsonResponse(req, { error: "The bishop's own PIN is not managed here." }, 400);
     }
 
     const rl = await rateLimit({ supa, email: String(admin.email).toLowerCase(), ip, kind: "reset" });
     if (rl.limited) {
-      await audit(supa, "ADMIN_PIN_ISSUE_RATE_LIMITED", { actor_id: actorId, ip_address: ip, target_table: "rf_admins", target_id: admin.id });
+      await audit(supa, "ADMIN_PIN_ISSUE_RATE_LIMITED", { actor_id: actorId, ip_address: ip, target_table: targetTable, target_id: admin.id });
       await padTo(started, MIN_RESPONSE_MS);
-      return jsonResponse(req, { error: "Too many attempts for this admin. Try again later." }, 429);
+      return jsonResponse(req, { error: "Too many attempts for this person. Try again later." }, 429);
     }
 
     const pin = generateSixDigitPin();
     const { data: bcryptHash, error: hashErr } = await supa.rpc("hash_pin", { p_pin: pin });
     if (hashErr || !bcryptHash) {
-      await audit(supa, "ADMIN_PIN_ISSUE_HASH_FAILED", { actor_id: actorId, ip_address: ip, target_id: admin.id, error: String(hashErr) });
+      await audit(supa, "ADMIN_PIN_ISSUE_HASH_FAILED", { actor_id: actorId, ip_address: ip, target_table: targetTable, target_id: admin.id, error: String(hashErr) });
       await padTo(started, MIN_RESPONSE_MS);
       return jsonResponse(req, { error: "Could not set the PIN." }, 500);
     }
 
     // Clearing the reset token stops an already-emailed reset code from being
     // redeemed after this PIN is issued, which would silently override it.
-    const upd = await supa.from("rf_admins")
+    const upd = await supa.from(targetTable)
       .update({ pin_bcrypt: bcryptHash, pin_hash: "migrated-to-bcrypt", reset_token_hash: null, reset_token_expires: null, status: "active" })
       .eq("id", admin.id);
     if (upd.error) {
-      await audit(supa, "ADMIN_PIN_ISSUE_DB_WRITE_FAILED", { actor_id: actorId, ip_address: ip, target_id: admin.id, error: String(upd.error) });
+      await audit(supa, "ADMIN_PIN_ISSUE_DB_WRITE_FAILED", { actor_id: actorId, ip_address: ip, target_table: targetTable, target_id: admin.id, error: String(upd.error) });
       await padTo(started, MIN_RESPONSE_MS);
       return jsonResponse(req, { error: "Could not set the PIN." }, 500);
     }
 
-    const emailRes = await sendPinEmail(String(admin.email), String(admin.full_name ?? ""), pin);
+    const emailRes = await sendPinEmail(String(admin.email), String(admin.full_name ?? ""), pin, targetTable === "rf_admins");
     // Delivery metadata only. The PIN itself is deliberately absent.
     await audit(supa, "ADMIN_PIN_ISSUED", {
       actor_id:     actorId,
       ip_address:   ip,
-      target_table: "rf_admins",
+      target_table: targetTable,
       target_id:    admin.id,
       delivered:    emailRes.ok,
       send_status:  emailRes.status,
@@ -181,33 +200,37 @@ function generateSixDigitPin(): string {
   return String(value % RANGE).padStart(6, "0");
 }
 
-async function sendPinEmail(to: string, name: string, pin: string): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
+async function sendPinEmail(to: string, name: string, pin: string, isAdmin: boolean): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
   if (!RESEND_API_KEY) return { ok: false, status: 0, error: "RESEND_API_KEY not set" };
   const greeting = name ? `Hello ${name},` : `Hello,`;
-  const subject = `Your ${NETWORK_SHORT} admin access`;
+  const button  = isAdmin ? `"Admin Access"` : `"Sign in with PIN"`;
+  const subject = isAdmin ? `Your ${NETWORK_SHORT} admin access` : `Your ${NETWORK_SHORT} sign-in PIN`;
+  const lead    = isAdmin
+    ? `You have been given admin access to the ${NETWORK_SHORT} app.`
+    : `A new sign-in PIN has been issued for your ${NETWORK_SHORT} account.`;
   const text = [
     greeting,
     ``,
-    `You have been given admin access to the ${NETWORK_SHORT} app.`,
+    lead,
     ``,
     `Your 6-digit PIN is:`,
     ``,
     `    ${pin}`,
     ``,
-    `To sign in: open the app, tap "Admin Access", and enter this email address along with the PIN above.`,
+    `To sign in: open the app, tap ${button}, and enter this email address along with the PIN above.`,
     ``,
-    `Keep this PIN private. You can change it at any time from the sign-in screen by tapping "Locked out? Reset your PIN".`,
+    `Keep this PIN private. You can change it at any time from the sign-in screen by tapping "Forgot your PIN? Reset it with an emailed code".`,
     ``,
     `— ${NETWORK_SHORT}`,
   ].join("\n");
   const html = `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1a1a1a;line-height:1.5;padding:24px;max-width:480px;margin:0 auto">
     <h2 style="font-family:Georgia,serif;color:#8a6a1c;margin:0 0 16px">${NETWORK_SHORT}</h2>
     <p>${escapeHtml(greeting)}</p>
-    <p>You have been given <strong>admin access</strong> to the ${NETWORK_SHORT} app.</p>
+    <p>${escapeHtml(lead)}</p>
     <p>Your 6-digit PIN is:</p>
     <p style="font-size:28px;font-weight:600;letter-spacing:6px;background:#f5f1e6;padding:14px 20px;border-radius:8px;text-align:center;margin:20px 0">${pin}</p>
-    <p>To sign in: open the app, tap <strong>"Admin Access"</strong>, and enter this email address along with the PIN above.</p>
-    <p style="color:#666;font-size:14px">Keep this PIN private. You can change it at any time from the sign-in screen by tapping "Locked out? Reset your PIN".</p>
+    <p>To sign in: open the app, tap <strong>${escapeHtml(button)}</strong>, and enter this email address along with the PIN above.</p>
+    <p style="color:#666;font-size:14px">Keep this PIN private. You can change it at any time from the sign-in screen by tapping "Forgot your PIN? Reset it with an emailed code".</p>
     <p style="color:#888;font-size:12px;margin-top:32px">— ${NETWORK_SHORT}</p>
   </body></html>`;
 

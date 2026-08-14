@@ -2955,16 +2955,26 @@ async function confirmPinReset(){
 }
 
 async function bishopResetPastorPin(pastorId){
-  // Look up the pastor's email and trigger the same Resend-backed reset flow
-  // a pastor would self-serve. Bishop never sees the code.
+  // Email the pastor a working 6-digit PIN rather than a code they must trade
+  // for a PIN of their own. Same low-friction path the Admins tab uses: the
+  // PIN is generated and bcrypted inside the edge function and returned to
+  // nobody, so it reaches the pastor's inbox and nowhere else.
+  if(!confirm('Email this pastor a new 6-digit PIN?\n\nTheir current PIN stops working immediately, and any reset code already sent to them is cancelled.')) return;
   try {
-    const rows = await sbS('rf_pastors',{select:'email,full_name', id:'eq.'+pastorId});
-    const email = rows && rows[0] && rows[0].email;
-    if(!email){ alert('Pastor has no email on file. Add one to their profile first.'); return; }
-    await callEdgeFn('kgfcm-pin-reset', { email });
-    audit('BISHOP_PIN_RESET_SENT',{table:'rf_pastors', targetId:pastorId});
-    alert(`Reset email sent to ${email}. The pastor will receive an 8-character code that expires in 30 minutes.`);
-  } catch(e){ alert('Could not send reset email.'); }
+    const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey':SB_API_KEY(),
+        'Authorization':'Bearer '+ST.session.access_token,
+      },
+      body: JSON.stringify({ pastor_id: pastorId }),
+    });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
+    audit('BISHOP_PIN_ISSUED',{table:'rf_pastors', targetId:pastorId});
+    alert(`A 6-digit PIN has been emailed to ${data.email}.\n\nThey sign in with that email address and the PIN. You do not need to see it — ask them to check their inbox.`);
+  } catch(e){ alert(e.message || 'Could not send the PIN.'); }
 }
 
 async function tryBioLogin(){
