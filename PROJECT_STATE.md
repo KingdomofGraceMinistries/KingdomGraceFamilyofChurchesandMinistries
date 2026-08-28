@@ -390,6 +390,62 @@ verified in production", so the deployment had been tracking the repo.
 `interface` blocks gone, object literals reformatted — which proves nothing.
 Compare behaviour and `verify_jwt` flags instead.
 
+### J. `create_user: false` — the hinge of the whole auth model
+
+This was documented only in a code comment. It is the single decision that
+makes this app's login behave differently from a stock Supabase project, and
+it surprises anyone who has built on Supabase before, so it belongs here.
+
+**What the flag does.** `POST /auth/v1/otp` (`sendMagicLink()`,
+`kg-pastoral-network.html:865`) is the endpoint that emails either a magic link
+or a numeric code — the same endpoint, with the email template deciding which.
+By default, when the address has no `auth.users` row, GoTrue **creates one**
+and then sends. That is self-serve signup-by-email. Passing
+`create_user: false` refuses instead: `422 otp_disabled`, no account, no email.
+
+**The consequence, stated plainly.** An `auth.users` row is only ever minted by
+`ensureAuthUser()` during a successful PIN login. So:
+
+```
+email + PIN  →  auth.users row created  →  magic link works from then on
+```
+
+**A magic link can never be anyone's first way in.** For a new person it always
+fails. `kg-pastoral-network.html:882` catches that specific error and says so:
+"Sign in with your email and PIN first."
+
+**Why it is set that way.** Membership is bishop-controlled: a person exists
+because an `rf_pastors` or `rf_admins` row exists, and the auth row shadows it.
+Self-serve OTP signup would let anyone who types any address mint an auth user.
+
+Be precise about the stakes — this is **not** an access-control guard. A
+GoTrue-created OTP user carries no `app_metadata.role`, and every RLS policy
+keys on `is_bishop()` or `pastor_id_for_current_user()`, so such a user would
+see nothing. `ensureAuthUser()` also adopts any pre-existing row for the email
+and overwrites `app_metadata.role` from the profile table, so an account
+squatted in advance is not an escalation path either. What the flag actually
+prevents is `auth.users` filling with profile-less accounts, strangers burning
+the Supabase Auth email quota, and the roster ceasing to describe who is really
+in the network.
+
+**The cost is real and was felt on 2026-08-28:** nobody can bootstrap
+themselves. Someone must issue the first PIN. That flow exists and works —
+`kgfcm-admin-pin-issue` generates a 6-digit CSPRNG PIN, bcrypts it and emails
+it via Resend (the Bishop's **Email PIN** button in the Admins tab). It is the
+same "system sends a code for first login" pattern other Supabase projects get
+from GoTrue OTP, just built on this project's own PIN table instead.
+
+> **Do not "modernise" this to `should_create_user`.** The code comment at
+> `:863` records that the newer key is **ignored** by this project's GoTrue,
+> and the endpoint then falls back to *creating* the user. Renaming it would
+> silently switch self-serve signup on across a closed pastoral network, and
+> nothing would fail loudly to signal it.
+
+**If self-service is ever wanted**, the change is a deliberate design decision,
+not a flag flip: it needs a gate deciding who may mint an account — an invite
+token, a bishop-approved allowlist, or a domain restriction — because
+`create_user: true` on its own admits everyone.
+
 ---
 
 ## 🔭 NEXT UP — white-label + platform/app views (opened 2026-08-14)
