@@ -151,11 +151,11 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   in that state, so browser traffic fails anyway — the real gap is Origin-less
   (non-browser) callers, and six functions skip the check entirely for those.
   Set the var, then delete the fail-open branch. Tracked as SEC-5.
-- **Five stale `--no-verify-jwt` instructions** remain in docs: four in this
-  file (lines in the superseded handoff sections) and one at
-  `supabase/RUN_THIS_IN_SUPABASE.sql:138`. They contradict the live deployment,
-  where `kgfcm-ai-proxy` runs `verify_jwt: true`. The `.sql` one now **blocks
-  commits** via the content guard if that file is ever staged.
+- **Four stale `--no-verify-jwt` instructions** remain, all in the superseded
+  handoff sections of this file. They contradict the live deployment, where
+  `kgfcm-ai-proxy` runs `verify_jwt: true`. The fifth, in
+  `RUN_THIS_IN_SUPABASE.sql`, went with that file — see the retirement note in
+  section G.
 - **`governance-boundaries.md` does not exist**, though CLAUDE.md points at it
   for the System A (WellFit) / System B (Envision Atlus) boundary map, the Key
   Files table below lists it, and `content-scan.sh` exempts it by name. That
@@ -167,6 +167,38 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
 - Carried forward unchanged: `SB_SECRET_KEY` holds a publishable key,
   the `pg_net` cron auth redesign, and the A1/A2 white-label work. See the
   NEXT UP section and `REFORMATION_ROADMAP.md` I1.
+
+### G. `RUN_THIS_IN_SUPABASE.sql` deleted — do not restore it
+
+The ship-day script was run once on 2026-04-12 and has been superseded in
+every part but one. Audited against live on 2026-08-28:
+
+| § | What it did | State when deleted |
+|---|---|---|
+| 1 | `add column rf_wins.image_data` | Gone — renamed to `image_url` by SEC-9 |
+| 1 | `rf_outreach_profiles` + four anon `using(true)` policies | Table kept; policies replaced by `outreach_self_insert/read/update` (SEC-3) |
+| 2 | `wins` bucket public + `wins_public_read`/`wins_anon_insert`/`wins_anon_update` | Bucket kept; all three anon policies dropped (SEC-15, SEC-3) |
+| 3 | Photo URLs → `/Bishop%20Sasser.jpg` Vercel paths | Keys hold `…supabase.co/storage/…` URLs instead |
+| 4 | Parchment cream theme | **Still live** — the only surviving section |
+
+**Why it had to go rather than be corrected.** It was written as an
+instruction (`Run this entire file in the Supabase SQL Editor`) and three
+handoff checklists in this file still pointed at it. Executed today it
+would re-add the column SEC-9 removed, re-create four anon `using(true)`
+policies on a table holding ministry data, restore the bucket-enumeration
+policies SEC-15 dropped, overwrite the photo URLs with Vercel paths that
+no longer resolve, and close by telling the operator to deploy
+`kgfcm-ai-proxy --no-verify-jwt`. Four completed security items, reversed
+by following the documentation.
+
+Nothing was lost. §1 lives in `20260412000300_wins_images_outreach.sql`,
+§2's bucket in the storage migrations, and §3–§4 are `rf_network_config`
+rows that are live and correct. Migrations are CLI-only now (section D),
+so a SQL-editor paste file has no place in the workflow regardless.
+
+References to it survive in the superseded 2026-04-12 and 2026-08-14
+handoff sections below. Those are kept as history; the file they name is
+gone and must not be reconstructed from them.
 
 ---
 
@@ -290,7 +322,7 @@ Hard-block hooks now installed at `.claude/settings.json` to prevent regression
 | SEC-8 | Remove redundant long-lived anon JWT from HTML | — | **DONE 2026-05-13** | Legacy `supabaseAnonKey` removed from kg-pastoral-network.html config block; `supabaseKey` getter + `SB_API_KEY` simplified to publishable key only. One fewer long-lived secret in the bundle. |
 | SEC-9 | Migrate `image_data` base64 columns to storage bucket | — | **DONE 2026-05-13** | Migration 20260513180000 renames `image_data` → `image_url` on rf_wins and rf_announcements (zero rows had non-null image_data — pure rename, no data carry). HTML uses the new name. Already wrote bucket URLs into the column; now the column name matches reality. |
 | SEC-10 | Idempotency keys on offline-queue mutations | — | **DONE 2026-05-13** | HTML `SB_HDR` attaches a fresh `Idempotency-Key: <crypto.randomUUID()>` on every mutation. sw.js preserves the header on queue and tracks completed keys in IndexedDB v2 `processed_keys` store; replays skip keys already acknowledged. Prevents the "server accepted but client lost the response" dup case. |
-| SEC-11 | Wire `.githooks/pre-commit` — set `core.hooksPath` | HIGH | **DONE 2026-08-28** | `git config core.hooksPath .githooks` is set; hook is executable. Until this session it had never run, which also means the `sw.js` CACHE_NAME auto-bump never fired — every HTML-only commit shipped without a service-worker cache bust. Both are live now. Consequence to know: `supabase/RUN_THIS_IN_SUPABASE.sql` fails the content guard on its line-138 `--no-verify-jwt` and will block a commit if staged. |
+| SEC-11 | Wire `.githooks/pre-commit` — set `core.hooksPath` | HIGH | **DONE 2026-08-28** | `git config core.hooksPath .githooks` is set; hook is executable. Until this session it had never run, which also means the `sw.js` CACHE_NAME auto-bump never fired — every HTML-only commit shipped without a service-worker cache bust. Both are live now. The one file that failed the guard, `supabase/RUN_THIS_IN_SUPABASE.sql`, has since been deleted — see section G. |
 | SEC-12 | Reload Claude hooks via `/hooks` (USER ACTION) | — | **DONE** | Hooks have been firing throughout the session (caught CORS-wildcard, SQL-anon, and HEREDOC false positives along the way — all refined). |
 | SEC-13 | rf_push_subscriptions ALL policy wide-open to `public` | — | **DONE 2026-05-13** | Replaced with self-only CRUD keyed on `user_id = auth.uid()::text`. Bishop can read all via `is_bishop()`. |
 | SEC-14 | reset_weekly_post_counts SECURITY DEFINER + anon-executable + mutable search_path | — | **DONE 2026-05-13** | EXECUTE revoked from anon/authenticated/public; search_path pinned to `public, pg_temp`. |
@@ -412,7 +444,7 @@ the session restart — it points at the Kingdom Grace project directly:
 
 ### Ship-day handoff checklist
 
-1. Run `supabase/RUN_THIS_IN_SUPABASE.sql` in the Supabase SQL Editor (applies migration, photo URLs, warm theme, wins storage bucket).
+1. ~~Run `supabase/RUN_THIS_IN_SUPABASE.sql` in the Supabase SQL Editor (applies migration, photo URLs, warm theme, wins storage bucket).~~ **File deleted 2026-08-28 — do not run. See section G.**
 2. Redeploy AI proxy so the new `outreach` callType is live:
    `npx supabase functions deploy kgfcm-ai-proxy --no-verify-jwt`
 3. Wait for Vercel to finish building `9ce7fd0` (or the most recent push).
