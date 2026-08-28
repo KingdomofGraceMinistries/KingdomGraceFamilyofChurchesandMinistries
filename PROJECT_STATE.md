@@ -186,11 +186,34 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   `kgfcm-ai-proxy` runs `verify_jwt: true`. The fifth, in
   `RUN_THIS_IN_SUPABASE.sql`, went with that file — see the retirement note in
   section G.
-- **`governance-boundaries.md` does not exist**, though CLAUDE.md points at it
-  for the System A (WellFit) / System B (Envision Atlus) boundary map, the Key
-  Files table below lists it, and `content-scan.sh` exempts it by name. That
-  boundary is live, not theoretical — the account-level Supabase connector sees
-  only the WellFit project.
+- ~~`governance-boundaries.md` does not exist.~~ **Written 2026-08-28 —
+  partially specified, and deliberately so.** It records what was verified
+  against the running systems: WellFit (`xkybsjnvuohpqpbkikyn`, org
+  `uzeqxgbjillgajyjlycm`) and Kingdom Grace (`kseocbwhuveieqhayske`, org
+  `wvmhdxvicbffmrbdeepg`) sit in separate organisations that **no single
+  credential has ever seen both of** — proven this session, when the connector
+  authenticated to the WellFit account returned `permission denied` for every
+  Kingdom Grace call, then after re-auth saw Kingdom Grace alone. It also
+  records that this repo contains **zero** code, config or credential
+  referencing WellFit, Envision Atlus or a Shared Spine.
+
+  What it does **not** do is describe those systems' internals, because they
+  were not inspected and one line in `CLAUDE.md` is not a basis for an
+  authoritative boundary map. Those parts are written as questions for the
+  architect. The first one blocks the rest: **is Kingdom Grace inside this
+  boundary at all?** `CLAUDE.md` names System A and System B but never says
+  which this codebase is, and a plausible reading is that the governance
+  section was carried over from another project's template — the file also
+  reproduces `claude-code-frequent-mistakes.md` verbatim, so it is partly
+  assembled from reusable material.
+
+  One concrete finding surfaced: `auth.users` holds an account on a
+  **`@thewellfitcommunity.org`** address (role `pastor`, created 2026-05-14,
+  last sign-in 2026-05-15) — the "Maria" account named in migration
+  `20260515173803`'s header. Almost certainly a development test account, and
+  the only artifact crossing the naming boundary. Needs confirming and
+  removing; note that removal touches `auth.users`, `rf_pastors` and that
+  pastor's content rows.
 - ~~Two memory files cited by every guard violation message do not exist.~~
   **Written 2026-08-28.** `feedback_no_demo_grade_code.md` documents the five
   hard-blocked patterns and why each was banned (all five were shipped here
