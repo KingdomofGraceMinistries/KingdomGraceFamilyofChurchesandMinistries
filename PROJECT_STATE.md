@@ -98,8 +98,8 @@ four functions run with verification off.
 
 The four `false` entries have no JWT to verify by definition; each does its own
 rate limiting and constant-time comparison (`_shared/rate_limit.ts`).
-`kgfcm-deploy-smoke-test` is deliberately **not** declared — it is not in the
-repo and is slated for deletion.
+`kgfcm-deploy-smoke-test` is deliberately **not** declared — it was not in the
+repo and was deleted on 2026-08-28 (see section I).
 
 ### C. Security advisors — all three explained, none are live holes
 
@@ -138,8 +138,9 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   subscriptions. The audit logger and the devotion cron are both live.
 - **3 cron jobs:** `reset-weekly-posts` (Mon 00:00), `kgfcm_rate_limit_cleanup`
   (03:15), `kgfcm_daily_devotion` (10:00, still on the legacy vault JWT).
-- **13 edge functions deployed** vs 12 in the repo — the extra is
-  `kgfcm-deploy-smoke-test`, still ACTIVE at v3.
+- **12 edge functions deployed**, matching the repo one-for-one. Was 13 until
+  2026-08-28, when the retired `kgfcm-deploy-smoke-test` stub was deleted —
+  see section I.
 - **Buckets:** `credentials` and `ministry-photos` private; `avatars`,
   `announcements`, `voice`, `wins` public with no SELECT-list policies —
   matches SEC-15 (direct URL works, enumeration does not).
@@ -332,6 +333,43 @@ function. The two existing senders are narrowly scoped to PINs and reset codes
 on purpose; a generic mailer inside a production auth system is a larger
 liability than the gap it closes.
 
+### I. `kgfcm-deploy-smoke-test` deleted — and it redeployed everything else
+
+The retired stub is gone. It was a 410 responder that read nothing from the
+environment and whose own header said it was safe to delete; nothing in the
+repo referenced it and no cron job called it. Deployed functions now number
+**12, matching the repo one-for-one.**
+
+**The deletion also redeployed all twelve remaining functions.** All twelve
+jumped exactly +3 versions with an identical `updated_at`, and their
+`entrypoint_path` changed from `/tmp/user_fn_…` to
+`file:///app/supabase/functions/…` — one bulk operation, sourced from the repo.
+
+**Cause: the command was run as `yes | supabase functions delete …`,** to keep
+an interactive prompt from hanging a non-interactive shell. `yes` answers every
+question a tool asks, including ones never displayed. A single-function delete
+became a whole-project redeploy of a production auth system. **Do not pipe
+`yes` into a destructive command here.** Run it plainly and read the prompt, or
+use the tool's own scoped non-interactive flag.
+
+**Verified immediately afterwards, all green:** `kgfcm-pin-login` returns 401
+with its constant-time padding intact; CORS still echoes only the apex and
+rejects an unknown origin; `kgfcm-audit` returns 401 unauthenticated; and all
+twelve `verify_jwt` flags match the pre-deletion state exactly, including the
+four `false` PIN endpoints. Nothing broke.
+
+**What could not be verified:** whether the *previous* bundles differed from
+the repo. They are unrecoverable. A dashboard hot-edit that was never committed
+would have been overwritten. Evidence says that is unlikely — before deletion
+`kgfcm-admin-pin-issue` stood at v3, and commit `2d0b5dc` records "Deployed v3,
+verified in production", so the deployment had been tracking the repo.
+
+**Verification trap for next time:** `supabase functions download` returns the
+**compiled JavaScript**, not the TypeScript source. Diffing it against
+`supabase/functions/*/index.ts` reports every file as different — types erased,
+`interface` blocks gone, object literals reformatted — which proves nothing.
+Compare behaviour and `verify_jwt` flags instead.
+
 ---
 
 ## 🔭 NEXT UP — white-label + platform/app views (opened 2026-08-14)
@@ -421,8 +459,9 @@ viewing the pastor app gets the same platform chrome any pastor does.
   identifies the cron by *decoding* that bearer (`claims.role === 'service_role'`),
   so an opaque key fails `decodeJwtClaims` and hits the `Invalid JWT` 401. Needs
   an auth redesign — own session.
-- **Delete the `kgfcm-deploy-smoke-test` function.** Retired to a 410 stub; reads
-  nothing from the environment. Safe to remove from the dashboard.
+- ~~**Delete the `kgfcm-deploy-smoke-test` function.**~~ **DONE 2026-08-28.**
+  Was a 410 stub reading nothing from the environment. See section I — the
+  deletion had an unintended side effect worth reading before deleting another.
 - **Gladys Bowden-Brown** (`ladyofpraize@hotmail.com`) is provisioned and active
   but has never signed in (`auth_user_id` null). Bishop taps **Email PIN** in the
   Admins tab and she receives working 6 digits.
