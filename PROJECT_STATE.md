@@ -1,9 +1,172 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-28
 **Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🧭 2026-08-28 — live audit + migration ledger reconciliation
+
+First session to read the deployed project end-to-end rather than reason from
+the repo. Three things closed; the findings that stayed open are folded into
+the lists below rather than repeated here.
+
+### A. Migration ledger — reconciled, `db push` is safe again
+
+**What was wrong.** The repo and the remote ledger had diverged three ways:
+
+1. **Four repo migrations were applied but unrecorded** — `devotion_cron_point_at_v2`,
+   `rf_admins_email_unique_index`, `create_admin_strict_bishop_only`,
+   `rls_initplan_and_fk_indexes`. Applied over MCP/SQL editor, so no ledger row.
+   Each was verified present in the database by its effects, not by trusting the
+   file: the unique index on `lower(email)` exists, `kgfcm_daily_devotion` posts
+   to `…/kgfcm-devotion-generate-v2`, `create_admin`'s body carries the
+   `caller_role <> 'bishop'` guard, and the performance advisor reports zero
+   `auth_rls_initplan` and zero unindexed-FK lints.
+2. **Two live migrations had no repo file at all** — `20260515173202_tighten_voice_and_wins_buckets`
+   and `20260515173803_ann_self_read_includes_own_removed`. Recovered verbatim
+   (comments intact) from `supabase_migrations.schema_migrations.statements` and
+   written as repo files. **This is why SEC-16's claim had quietly become false.**
+3. **Four legacy-named files carried malformed versions** — `20260408_001_*` etc.
+   parsed as 8-digit versions, and `_003`/`_004` both collapsed to `20260412`,
+   a primary-key collision. Renamed via `git mv` to `20260408000100`,
+   `20260409000200`, `20260412000300`, `20260412000400` — order preserved, all
+   sorting before `20260412210000_consolidated_pre_auth`.
+
+**The hazard this closed:** `supabase db push` would have tried to replay ~14
+local-only migrations against production, including the 538-line `real_auth`.
+
+**What was done.** All via the **CLI** — see the rule in section D.
+`migration repair --status applied` on the 14 local-only versions, then
+`--status reverted` on 16 superseded remote-only rows. The revert deletes ledger
+rows only; verified afterwards that the schema was untouched (21 `rf_` tables,
+69 policies, 3 cron jobs, 6 buckets, 92 devotions, 219 audit rows — all
+unchanged).
+
+**Provenance of the 16 reverted rows.** They were the granular originals that
+the repo had already consolidated. Every one is covered by a file that is now
+marked applied — recorded here because the ledger rows themselves are gone:
+
+| Reverted remote rows | Superseded by repo file |
+|---|---|
+| `20260408221221`, `…221240`, `…221253`, `…222155` | `20260408000100_create_tables.sql` |
+| `20260409033846` | `20260409000200_push_subscriptions.sql` |
+| `20260412004052` | `20260412000300_wins_images_outreach.sql` |
+| `20260412023404` | `20260412000400_voice_seen_reactions_fasts_events_credentials.sql` |
+| `20260409035012`, `…040326`, `…041744`, `20260412203307` | `20260412210000_consolidated_pre_auth.sql` |
+| `20260513170010`, `172341`, `174141`, `180102`, `183034` | `…170000_real_auth`, `…170100_auth_helpers_invoker`, `…173000_create_admin_rpc`, `…180000_image_data_to_image_url`, `…200000_devotions` |
+
+**Final state:** 24 local files ↔ 24 ledger rows, one-to-one. 0 pending, 0
+remote-only. `db push --dry-run` → `{"upToDate":true}`.
+
+**Knock-on: three historical migrations are now exempt from the content guard.**
+Git reports a rename as a new path, so renaming the legacy files exposed them to
+the scanner for the first time. All three carry pre-auth-era
+`to anon … using(true)` policies that SEC-3 dropped in
+`20260513170000_real_auth.sql`, and an applied migration cannot be edited
+without breaking the reproducibility the ledger depends on. They are exempted in
+`content-scan.sh` **by exact filename** — deliberately not by a
+`migrations/*` wildcard or a date cutoff, so every new migration is still
+scanned in full. Verified after the change: a new migration containing
+`to anon … using(true)` still blocks, and a lookalike filename
+(`…_create_tables_v2.sql`) also still blocks.
+
+Live confirmation that the exempted SQL is genuinely dead: `rf_wins`,
+`rf_announcements` and friends carry no anon write policies. The only anon
+policy left network-wide is `config_anon_branding_read` — a scoped SELECT on
+`rf_network_config` excluding `bishop_pin_hash`, `bishop_pin_bcrypt`,
+`bishop_email`, `vapid_private_key` and `resend_api_key` — which is the
+pre-login branding read the app needs.
+
+### B. `config.toml` now declares the JWT map — SEC-5 hardening
+
+`config.toml` previously declared **no** `[functions.*]` blocks, so the deployed
+`verify_jwt` flags lived only in the dashboard. An undeclared
+`supabase functions deploy` would have applied the CLI default and flipped the
+PIN endpoints to `verify_jwt = true` — **locking every pastor out of login.**
+
+All 12 repo functions are now declared explicitly, matching the live project as
+read on 2026-08-28. Correcting an earlier assumption in this file:
+`kgfcm-admin-pin-issue` is deployed **`verify_jwt: true`**, not false — only
+four functions run with verification off.
+
+| `verify_jwt = false` (pre-session auth boundary) | `verify_jwt = true` |
+|---|---|
+| `kgfcm-pin-login`, `kgfcm-pin-register`, `kgfcm-pin-reset`, `kgfcm-pin-reset-confirm` | `admin-pin-issue`, `ai-proxy`, `audit`, `checkin-remind`, `devotion-generate`, `devotion-generate-v2`, `push-notify`, `push-send` |
+
+The four `false` entries have no JWT to verify by definition; each does its own
+rate limiting and constant-time comparison (`_shared/rate_limit.ts`).
+`kgfcm-deploy-smoke-test` is deliberately **not** declared — it is not in the
+repo and is slated for deletion.
+
+### C. Security advisors — all three explained, none are live holes
+
+Read the advisors before changing anything here. Two of the three are working
+as designed and will keep firing:
+
+| Advisor | Verdict |
+|---|---|
+| `create_admin` executable by `authenticated` (WARN) | **Deliberate — do not "fix".** Migration `20260814190000` keeps the EXECUTE grant on purpose and enforces `app_metadata.role = 'bishop'` *inside the function body*. Its header explains why `is_bishop()` could not be narrowed: it really means "is staff" and a dozen RLS policies depend on that looser reading. The linter cannot see body-level guards. Revoking the grant would break the bishop's Admins tab. |
+| `rf_reset_attempts` RLS enabled, no policies (INFO) | **Correct by design.** Deny-all to anon/authenticated; only service_role reaches it, which is what a rate-limit table wants. |
+| Leaked password protection disabled (WARN) | **Not applicable.** Auth is 6-digit PIN + magic link. There are no user-chosen passwords for HaveIBeenPwned to check. |
+
+Performance advisors: 15 unused indexes and 9 multiple-permissive-policy
+warnings. Both are expected — the unused indexes reflect a network with one
+pastor and near-zero rows, and the permissive-policy pairs are the inherent
+cost of the `*_self_*` + `*_bishop_*` pattern. Neither is worth acting on at
+this data volume.
+
+### D. Migrations are CLI-only — standing rule
+
+**Never apply DDL through the Supabase MCP connector** (`apply_migration`, or
+DDL via `execute_sql`). MCP-applied DDL is precisely what produced the drift in
+section A: schema landed without a ledger row or a repo file, so the repo
+stopped being able to reconstruct production. Use the CLI —
+`migration up`, `db push`, `migration repair` — which writes the file and the
+ledger together. MCP remains the right tool for **read-only** inspection:
+`list_tables`, `get_advisors`, `list_migrations`, `SELECT`s.
+
+### E. Live inventory, as read 2026-08-28
+
+Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
+
+- **21 tables, RLS enabled on every one.**
+- Data is thin but the system is demonstrably working: 1 pastor, 2 admins,
+  3 check-ins, 3 announcements, 92 devotions, 219 audit rows, 6 push
+  subscriptions. The audit logger and the devotion cron are both live.
+- **3 cron jobs:** `reset-weekly-posts` (Mon 00:00), `kgfcm_rate_limit_cleanup`
+  (03:15), `kgfcm_daily_devotion` (10:00, still on the legacy vault JWT).
+- **13 edge functions deployed** vs 12 in the repo — the extra is
+  `kgfcm-deploy-smoke-test`, still ACTIVE at v3.
+- **Buckets:** `credentials` and `ministry-photos` private; `avatars`,
+  `announcements`, `voice`, `wins` public with no SELECT-list policies —
+  matches SEC-15 (direct URL works, enumeration does not).
+
+### F. Still open after this session
+
+- **`ALLOWED_ORIGINS` is unset**, so `_shared/cors.ts:22` `isOriginAllowed()`
+  returns true for any origin. Mitigating: `corsHeaders()` emits an empty ACAO
+  in that state, so browser traffic fails anyway — the real gap is Origin-less
+  (non-browser) callers, and six functions skip the check entirely for those.
+  Set the var, then delete the fail-open branch. Tracked as SEC-5.
+- **Five stale `--no-verify-jwt` instructions** remain in docs: four in this
+  file (lines in the superseded handoff sections) and one at
+  `supabase/RUN_THIS_IN_SUPABASE.sql:138`. They contradict the live deployment,
+  where `kgfcm-ai-proxy` runs `verify_jwt: true`. The `.sql` one now **blocks
+  commits** via the content guard if that file is ever staged.
+- **`governance-boundaries.md` does not exist**, though CLAUDE.md points at it
+  for the System A (WellFit) / System B (Envision Atlus) boundary map, the Key
+  Files table below lists it, and `content-scan.sh` exempts it by name. That
+  boundary is live, not theoretical — the account-level Supabase connector sees
+  only the WellFit project.
+- **Two memory files cited by every guard violation message do not exist** —
+  `memory/feedback_no_demo_grade_code.md` and `memory/feedback_audit_logger_only.md`.
+  The hooks fire correct blocks that point at nothing.
+- Carried forward unchanged: `SB_SECRET_KEY` holds a publishable key,
+  the `pg_net` cron auth redesign, and the A1/A2 white-label work. See the
+  NEXT UP section and `REFORMATION_ROADMAP.md` I1.
 
 ---
 
@@ -118,21 +281,21 @@ Hard-block hooks now installed at `.claude/settings.json` to prevent regression
 | # | Item | Priority | Status | Notes |
 |---|------|----------|--------|-------|
 | SEC-1 | Replace `btoa(pin)` with real server-side PIN hashing (bcrypt) | CRITICAL | **DONE 2026-05-13** | Migration `20260513170000_real_auth.sql`; pgcrypto bcrypt; `verify_pin` / `hash_pin` SECURITY DEFINER RPCs grantable only to service_role; column-level GRANT keeps `pin_bcrypt` unreadable by authenticated. |
-| SEC-2 | Replace `Math.random()` reset codes + `btoa(...)` invite tokens with CSPRNG | **DONE 2026-05-13** | Final HTML grep returns zero Math.random / security-context btoa. Reset codes now generated by `kgfcm-pin-reset` via `generateCode()` (CSPRNG, 8 hex chars). Invite tokens via `crypto.randomUUID()`. Admin creation `pin_hash: btoa(pin)` replaced by `create_admin()` SECURITY DEFINER RPC with bcrypt. (Remaining `btoa()` in HTML is the WebAuthn credential.rawId base64 encoding — legitimate bytes-to-text use.) |
+| SEC-2 | Replace `Math.random()` reset codes + `btoa(...)` invite tokens with CSPRNG | — | **DONE 2026-05-13** | Final HTML grep returns zero Math.random / security-context btoa. Reset codes now generated by `kgfcm-pin-reset` via `generateCode()` (CSPRNG, 8 hex chars). Invite tokens via `crypto.randomUUID()`. Admin creation `pin_hash: btoa(pin)` replaced by `create_admin()` SECURITY DEFINER RPC with bcrypt. (Remaining `btoa()` in HTML is the WebAuthn credential.rawId base64 encoding — legitimate bytes-to-text use.) |
 | SEC-3 | Tighten RLS — remove `anon using(true)/with check(true)`, require JWT | CRITICAL | **DONE 2026-05-13** | All old `using(true)` anon policies dropped. New policies key on `auth.uid()` and `is_bishop()` (JWT app_metadata.role). Column-level GRANT excludes pin_bcrypt + reset_token_hash. Post-migration assertion: zero open anon writes remain. |
-| SEC-4 | Email/SMS delivery for reset codes — stop echoing to browser | **DONE 2026-05-13** | Two new edge functions: `kgfcm-pin-reset` (sends 8-char CSPRNG code via Resend, stores SHA-256 hash in `reset_token_hash`, constant-time `{sent:true}` response regardless of email-existence — enumeration defense) and `kgfcm-pin-reset-confirm` (verifies hash, bcrypts new PIN, issues session for auto-login). Bishop's reset-pastor/reset-admin buttons now trigger the same email flow; bishop never sees a code. Code never echoes to the browser. **Action: set `RESEND_API_KEY` and `RESEND_FROM` Supabase secrets** for delivery; without them the function still hashes and stores correctly but the email send is a no-op (audited as `delivered:false`). |
-| SEC-5 | JWT-verify all edge functions, lock CORS to production origin | **DONE 2026-05-13** | All 4 legacy fns (kgfcm-ai-proxy, kgfcm-push-send, kgfcm-push-notify, kgfcm-checkin-remind) redeployed with `verify_jwt: true` and the shared CORS module. Unauthenticated calls now rejected by Supabase's edge runtime before our code runs. kgfcm-push-send accepts service_role (server-to-server) or bishop/admin JWT only; rejects pastor JWT with audit log. kgfcm-ai-proxy rate-limits per user via rf_reset_attempts. Login/register kept `verify_jwt: false` (PIN flow has no JWT yet) but do their own rate-limit + constant-time. Lock CORS to production by setting `ALLOWED_ORIGINS` Supabase env var to the Vercel domain. |
-| SEC-6 | Server-side audit logger via service-role edge function | **DONE 2026-05-13** | New kgfcm-audit edge function deployed (verify_jwt: true). Client `audit()` in HTML routes through it; actor_id/actor_role come from the verified JWT, not client claim. All 5 `console.error` calls in legacy fns replaced with `audit()`. Verified: SMOKE_TEST audit row from bishop JWT recorded `actor_role: bishop` server-derived. |
-| SEC-7 | Add CSP header in vercel.json | **DONE 2026-05-13** | Strict CSP with default-src 'self', script-src 'self' 'unsafe-inline' (HTML has inline scripts + onclick handlers), style-src + font-src for Google Fonts, img-src + connect-src locked to the project's Supabase domain, frame-ancestors 'none', upgrade-insecure-requests. Plus HSTS (Strict-Transport-Security: max-age=63072000 includeSubDomains preload). |
-| SEC-8 | Remove redundant long-lived anon JWT from HTML | **DONE 2026-05-13** | Legacy `supabaseAnonKey` removed from kg-pastoral-network.html config block; `supabaseKey` getter + `SB_API_KEY` simplified to publishable key only. One fewer long-lived secret in the bundle. |
-| SEC-9 | Migrate `image_data` base64 columns to storage bucket | **DONE 2026-05-13** | Migration 20260513180000 renames `image_data` → `image_url` on rf_wins and rf_announcements (zero rows had non-null image_data — pure rename, no data carry). HTML uses the new name. Already wrote bucket URLs into the column; now the column name matches reality. |
-| SEC-10 | Idempotency keys on offline-queue mutations | **DONE 2026-05-13** | HTML `SB_HDR` attaches a fresh `Idempotency-Key: <crypto.randomUUID()>` on every mutation. sw.js preserves the header on queue and tracks completed keys in IndexedDB v2 `processed_keys` store; replays skip keys already acknowledged. Prevents the "server accepted but client lost the response" dup case. |
-| SEC-11 | Wire `.githooks/pre-commit` — set `core.hooksPath` (USER ACTION) | OPEN | Run `git config core.hooksPath .githooks` once. |
-| SEC-12 | Reload Claude hooks via `/hooks` (USER ACTION) | **DONE** | Hooks have been firing throughout the session (caught CORS-wildcard, SQL-anon, and HEREDOC false positives along the way — all refined). |
-| SEC-13 | rf_push_subscriptions ALL policy wide-open to `public` | **DONE 2026-05-13** | Replaced with self-only CRUD keyed on `user_id = auth.uid()::text`. Bishop can read all via `is_bishop()`. |
-| SEC-14 | reset_weekly_post_counts SECURITY DEFINER + anon-executable + mutable search_path | **DONE 2026-05-13** | EXECUTE revoked from anon/authenticated/public; search_path pinned to `public, pg_temp`. |
-| SEC-15 | Public bucket SELECT-list policies | **DONE 2026-05-13** | `wins_public_read`, `voice_public_read`, `public_read_avatars`, `public_read_announcements` dropped. Direct URL fetch still works; bucket enumeration does not. |
-| SEC-16 | Capture orphan MCP-applied migrations as files | **DONE 2026-05-13** | `20260412210000_consolidated_pre_auth.sql` captures the schema for rf_audit_log, rf_admins, rf_network_config plus the rf_pastors.reset_token columns. Idempotent (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS / ON CONFLICT DO NOTHING). A fresh `supabase db reset` against the repo migrations now reconstructs the live schema. |
+| SEC-4 | Email/SMS delivery for reset codes — stop echoing to browser | — | **DONE 2026-05-13** | Two new edge functions: `kgfcm-pin-reset` (sends 8-char CSPRNG code via Resend, stores SHA-256 hash in `reset_token_hash`, constant-time `{sent:true}` response regardless of email-existence — enumeration defense) and `kgfcm-pin-reset-confirm` (verifies hash, bcrypts new PIN, issues session for auto-login). Bishop's reset-pastor/reset-admin buttons now trigger the same email flow; bishop never sees a code. Code never echoes to the browser. **Action: set `RESEND_API_KEY` and `RESEND_FROM` Supabase secrets** for delivery; without them the function still hashes and stores correctly but the email send is a no-op (audited as `delivered:false`). |
+| SEC-5 | JWT-verify all edge functions, lock CORS to production origin | — | **DONE 2026-05-13** | All 4 legacy fns (kgfcm-ai-proxy, kgfcm-push-send, kgfcm-push-notify, kgfcm-checkin-remind) redeployed with `verify_jwt: true` and the shared CORS module. Unauthenticated calls now rejected by Supabase's edge runtime before our code runs. kgfcm-push-send accepts service_role (server-to-server) or bishop/admin JWT only; rejects pastor JWT with audit log. kgfcm-ai-proxy rate-limits per user via rf_reset_attempts. Login/register kept `verify_jwt: false` (PIN flow has no JWT yet) but do their own rate-limit + constant-time. Lock CORS to production by setting `ALLOWED_ORIGINS` Supabase env var to the Vercel domain. |
+| SEC-6 | Server-side audit logger via service-role edge function | — | **DONE 2026-05-13** | New kgfcm-audit edge function deployed (verify_jwt: true). Client `audit()` in HTML routes through it; actor_id/actor_role come from the verified JWT, not client claim. All 5 `console.error` calls in legacy fns replaced with `audit()`. Verified: SMOKE_TEST audit row from bishop JWT recorded `actor_role: bishop` server-derived. |
+| SEC-7 | Add CSP header in vercel.json | — | **DONE 2026-05-13** | Strict CSP with default-src 'self', script-src 'self' 'unsafe-inline' (HTML has inline scripts + onclick handlers), style-src + font-src for Google Fonts, img-src + connect-src locked to the project's Supabase domain, frame-ancestors 'none', upgrade-insecure-requests. Plus HSTS (Strict-Transport-Security: max-age=63072000 includeSubDomains preload). |
+| SEC-8 | Remove redundant long-lived anon JWT from HTML | — | **DONE 2026-05-13** | Legacy `supabaseAnonKey` removed from kg-pastoral-network.html config block; `supabaseKey` getter + `SB_API_KEY` simplified to publishable key only. One fewer long-lived secret in the bundle. |
+| SEC-9 | Migrate `image_data` base64 columns to storage bucket | — | **DONE 2026-05-13** | Migration 20260513180000 renames `image_data` → `image_url` on rf_wins and rf_announcements (zero rows had non-null image_data — pure rename, no data carry). HTML uses the new name. Already wrote bucket URLs into the column; now the column name matches reality. |
+| SEC-10 | Idempotency keys on offline-queue mutations | — | **DONE 2026-05-13** | HTML `SB_HDR` attaches a fresh `Idempotency-Key: <crypto.randomUUID()>` on every mutation. sw.js preserves the header on queue and tracks completed keys in IndexedDB v2 `processed_keys` store; replays skip keys already acknowledged. Prevents the "server accepted but client lost the response" dup case. |
+| SEC-11 | Wire `.githooks/pre-commit` — set `core.hooksPath` | HIGH | **DONE 2026-08-28** | `git config core.hooksPath .githooks` is set; hook is executable. Until this session it had never run, which also means the `sw.js` CACHE_NAME auto-bump never fired — every HTML-only commit shipped without a service-worker cache bust. Both are live now. Consequence to know: `supabase/RUN_THIS_IN_SUPABASE.sql` fails the content guard on its line-138 `--no-verify-jwt` and will block a commit if staged. |
+| SEC-12 | Reload Claude hooks via `/hooks` (USER ACTION) | — | **DONE** | Hooks have been firing throughout the session (caught CORS-wildcard, SQL-anon, and HEREDOC false positives along the way — all refined). |
+| SEC-13 | rf_push_subscriptions ALL policy wide-open to `public` | — | **DONE 2026-05-13** | Replaced with self-only CRUD keyed on `user_id = auth.uid()::text`. Bishop can read all via `is_bishop()`. |
+| SEC-14 | reset_weekly_post_counts SECURITY DEFINER + anon-executable + mutable search_path | — | **DONE 2026-05-13** | EXECUTE revoked from anon/authenticated/public; search_path pinned to `public, pg_temp`. |
+| SEC-15 | Public bucket SELECT-list policies | — | **DONE 2026-05-13** | `wins_public_read`, `voice_public_read`, `public_read_avatars`, `public_read_announcements` dropped. Direct URL fetch still works; bucket enumeration does not. |
+| SEC-16 | Capture orphan MCP-applied migrations as files | — | **DONE 2026-05-13** | `20260412210000_consolidated_pre_auth.sql` captures the schema for rf_audit_log, rf_admins, rf_network_config plus the rf_pastors.reset_token columns. Idempotent (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS / ON CONFLICT DO NOTHING). A fresh `supabase db reset` against the repo migrations now reconstructs the live schema. **Regressed and re-fixed 2026-08-28** — two migrations applied on 2026-05-15 never got repo files, so the claim had quietly become false. Both recovered from the ledger and the whole history reconciled; see section A at the top of this file. |
 
 ### Phase 1 — what shipped on 2026-05-13
 
