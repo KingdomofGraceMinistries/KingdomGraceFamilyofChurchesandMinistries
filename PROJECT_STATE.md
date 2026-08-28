@@ -186,34 +186,43 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   `kgfcm-ai-proxy` runs `verify_jwt: true`. The fifth, in
   `RUN_THIS_IN_SUPABASE.sql`, went with that file — see the retirement note in
   section G.
-- ~~`governance-boundaries.md` does not exist.~~ **Written 2026-08-28 —
-  partially specified, and deliberately so.** It records what was verified
-  against the running systems: WellFit (`xkybsjnvuohpqpbkikyn`, org
-  `uzeqxgbjillgajyjlycm`) and Kingdom Grace (`kseocbwhuveieqhayske`, org
-  `wvmhdxvicbffmrbdeepg`) sit in separate organisations that **no single
-  credential has ever seen both of** — proven this session, when the connector
-  authenticated to the WellFit account returned `permission denied` for every
-  Kingdom Grace call, then after re-auth saw Kingdom Grace alone. It also
-  records that this repo contains **zero** code, config or credential
-  referencing WellFit, Envision Atlus or a Shared Spine.
+- ~~`governance-boundaries.md` does not exist.~~ **Written 2026-08-28.** It
+  documents Kingdom Grace as what it is: a **standalone system** with no
+  upstream, downstream or sibling — one Supabase project, one Vercel team, one
+  domain, one AI proxy, one mail sender, and no shared library, schema,
+  credential or cross-project connection anywhere in the repo.
 
-  What it does **not** do is describe those systems' internals, because they
-  were not inspected and one line in `CLAUDE.md` is not a basis for an
-  authoritative boundary map. Those parts are written as questions for the
-  architect. The first one blocks the rest: **is Kingdom Grace inside this
-  boundary at all?** `CLAUDE.md` names System A and System B but never says
-  which this codebase is, and a plausible reading is that the governance
-  section was carried over from another project's template — the file also
-  reproduces `claude-code-frequent-mistakes.md` verbatim, so it is partly
-  assembled from reusable material.
+  **The "System A (WellFit) / System B (Envision Atlus)" language in
+  `CLAUDE.md` does not describe this codebase.** Both belong to the operator's
+  other work. That six-line block is the only occurrence of those terms in the
+  repo, nothing references it, and it arrived in `8e191d8` — the first
+  substantive commit — as part of the initial `CLAUDE.md` scaffold, which also
+  reproduces `claude-code-frequent-mistakes.md` verbatim. The operator
+  confirmed they do not recognise the terms as describing this project.
+  Recommended: delete that bullet list from `CLAUDE.md` and point it at
+  `governance-boundaries.md`.
 
-  One concrete finding surfaced: `auth.users` holds an account on a
+  **The first draft of that file got this wrong and had to be rewritten.** An
+  unrelated project appeared in `list_projects` because the Supabase connector
+  was still authenticated to another of the operator's accounts at the start of
+  the session. Rather than treating that as the misconfiguration it was, the
+  draft reached for the `CLAUDE.md` System A/B line to explain it, wrote the
+  unrelated project up as one side of a governance boundary, and copied its
+  project ref, organisation ID and region into this repo. The operator
+  corrected it. The rule now written into §2.1 is the lesson: **an unexpected
+  project in a connector listing is a misconfiguration, never a discovery** —
+  stop and re-check the connection instead of reasoning about why it might be
+  relevant. No data in either system was touched.
+
+  One real finding survives: `auth.users` holds an account on a
   **`@thewellfitcommunity.org`** address (role `pastor`, created 2026-05-14,
-  last sign-in 2026-05-15) — the "Maria" account named in migration
-  `20260515173803`'s header. Almost certainly a development test account, and
-  the only artifact crossing the naming boundary. Needs confirming and
-  removing; note that removal touches `auth.users`, `rf_pastors` and that
-  pastor's content rows.
+  last sign-in 2026-05-15). Commit `f85c6c7`, "Fix pastor-side regressions
+  caught in Maria test session", confirms it is a development test account —
+  the operator tested Kingdom Grace with an address from another of their
+  platforms, and migration `20260515173803` exists to fix an RLS bug that
+  session surfaced. It is an active pastor login in production and should be
+  removed; removal touches `auth.users`, `rf_pastors` and that pastor's
+  content rows, so scope it explicitly.
 - ~~Two memory files cited by every guard violation message do not exist.~~
   **Written 2026-08-28.** `feedback_no_demo_grade_code.md` documents the five
   hard-blocked patterns and why each was banned (all five were shipped here

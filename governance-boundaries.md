@@ -1,210 +1,141 @@
 # Governance Boundaries
 
 **Last updated:** 2026-08-28
-**Status:** Partially specified — read the caveat below before relying on this.
+**Scope:** Kingdom Grace Pastoral Network only.
 
-`CLAUDE.md` has referenced this file since the repo was created, promising a
-boundary map covering System A / System B separation, Shared Spine services,
-cross-system read paths, data ownership, and refactor guardrails. The file
-never existed. `content-scan.sh` even exempts it by name. This is the first
-version.
+`CLAUDE.md` has referenced this file since the repo's first commit, promising a
+map of "System A (WellFit) vs System B (Envision Atlus)" separation, Shared
+Spine services, cross-system read paths, data ownership and refactor
+guardrails. The file never existed until now.
 
-> ### Caveat — what is and is not authoritative here
->
-> Everything under **Established** was verified directly against the running
-> systems on 2026-08-28 and can be re-checked with the commands given.
->
-> Everything under **Unspecified** is a question for the architect, not a
-> description. WellFit's and Envision Atlus's internals were **not inspected**
-> — this repo contains no code, config, credential, or comment referencing
-> either beyond a single line in `CLAUDE.md`. Nothing here should be read as
-> documenting their design. Writing a confident boundary map from one sentence
-> would produce exactly the kind of authoritative-sounding fiction a governance
-> document must never contain.
+**The promised map does not apply to this codebase.** See §3.
 
 ---
 
-## 1. Established — the boundary that demonstrably exists
+## 1. Kingdom Grace is a standalone system
 
-### 1.1 Two Supabase projects, two organisations, two credentials
+It has no upstream, no downstream, and no sibling. Everything it depends on is
+listed here; nothing else may be added without a deliberate decision.
 
-| | System A — WellFit | Kingdom Grace (this repo) |
-|---|---|---|
-| Project ref | `xkybsjnvuohpqpbkikyn` | `kseocbwhuveieqhayske` |
-| Project name | WellFit Community-Daily-Complete | KingdomofGraceMinistries's Project |
-| Organisation | `uzeqxgbjillgajyjlycm` | `wvmhdxvicbffmrbdeepg` |
-| Region | us-west-1 | us-east-2 |
-| Created | 2025-04-29 | 2026-04-08 |
-
-**These are not co-accessible.** This is not a policy statement — it is an
-observed property of the credentials. At the start of the 2026-08-28 session
-the Supabase connector was authenticated to the account owning WellFit; every
-call against `kseocbwhuveieqhayske` returned `You do not have permission`, and
-`list_projects` returned WellFit alone. After re-authorisation the same call
-returned Kingdom Grace alone. One credential has never seen both.
-
-**Consequence:** a cross-system query is not merely discouraged, it is
-currently impossible without deliberately provisioning a credential that spans
-both organisations. Do not create one to make a task easier.
-
-### 1.2 No cross-system code paths exist
-
-Verified by search across `*.ts`, `*.html`, `*.sql`, `*.json`, `*.toml`,
-`*.md`: this repo contains **zero** references to WellFit, Envision Atlus, or a
-Shared Spine, other than the `CLAUDE.md` line pointing here and the
-`PROJECT_STATE.md` entry recording that this file was missing.
-
-There is no shared library, no shared schema, no shared edge function, no
-imported client, and no configured cross-project connection. The Kingdom Grace
-app talks to exactly one Supabase project and one AI proxy, both listed in
-`PROJECT_STATE.md` section E.
-
-### 1.3 Separate hosting and delivery
-
-| Concern | Kingdom Grace |
+| Concern | What it is |
 |---|---|
-| Vercel team | `kingdomofgraceministries-projects` (`team_wjImZ2xATHI39kG9addV7phw`, hobby) |
-| Production domain | `kingdomgracefamily.com` (apex + `www`) |
-| DNS | Vercel nameservers (`ns1`/`ns2.vercel-dns.com`) |
-| Outbound mail | Resend, send-only, from `noreply@kingdomgracefamily.com` |
-| CORS allowlist | apex + `www` only — see `PROJECT_STATE.md` section F |
+| Database / Auth / Storage | One Supabase project, ref `kseocbwhuveieqhayske` |
+| Frontend | One file, `kg-pastoral-network.html`, served statically |
+| Hosting | Vercel team `kingdomofgraceministries-projects` |
+| Domain | `kingdomgracefamily.com` (apex + `www`) |
+| DNS | Vercel nameservers |
+| AI | Claude API, reached only via the `kgfcm-ai-proxy` edge function |
+| Outbound mail | Resend, send-only, `noreply@kingdomgracefamily.com` |
 
-No WellFit-owned domain, team, or mail identity appears anywhere in this
-project's configuration.
+There is no shared library, shared schema, shared credential, or cross-project
+connection with any other system. Verified 2026-08-28 by searching every
+`*.ts`, `*.html`, `*.sql`, `*.json`, `*.toml` and `*.md` in the repo.
 
-### 1.4 One observed cross-system artifact — needs a decision
-
-`auth.users` in the Kingdom Grace project contains an account on a
-**`@thewellfitcommunity.org`** address: role `pastor`, created 2026-05-14,
-last sign-in 2026-05-15. It corresponds to the "Maria" account referenced in
-the header comment of
-`supabase/migrations/20260515173803_ann_self_read_includes_own_removed.sql`,
-which was written to fix a soft-delete RLS bug that account surfaced.
-
-It is almost certainly a **test account created during development**, not a
-real member of the pastoral network. It is the only artifact in either system
-that crosses the naming boundary.
-
-**Action required:** confirm whether it is a test account and, if so, remove
-it. A live credential on another system's domain sitting in a production
-pastoral network's auth table is the kind of thing that is harmless until the
-day someone has to explain it. Note that removal touches `auth.users`,
-`rf_pastors`, and that pastor's `rf_checkins` / `rf_prayer_requests` rows —
-scope it deliberately, do not delete casually.
+**Data ownership** is therefore whole and undivided: this project is the system
+of record for every pastor, church, check-in, prayer request, win, message,
+devotion, event, fast and audit row it holds. Ownership *within* the system is
+enforced by RLS on all 21 tables, keyed on `auth.uid()` through
+`pastor_id_for_current_user()` and `is_bishop()`.
 
 ---
 
-## 2. Unspecified — questions only the architect can answer
+## 2. Operative rules
 
-Each of these is promised by `CLAUDE.md` and cannot be written truthfully from
-anything in this repo.
+### 2.1 One project, and confirm it before writing
 
-### 2.1 Is Kingdom Grace inside this boundary at all?
-
-`CLAUDE.md` names **System A (WellFit)** and **System B (Envision Atlus)**.
-It does not say which — if either — Kingdom Grace belongs to.
-`PROJECT_STATE.md` records the builder as **Envision VirtualEdge Group LLC**,
-which is suggestive but not the same name as "Envision Atlus".
-
-Three readings are possible and they lead to different rules:
-
-1. Kingdom Grace **is** System B, or part of it.
-2. Kingdom Grace is a **third, independent** system, and the A/B map describes
-   the builder's other work.
-3. The governance section of `CLAUDE.md` was **carried over from another
-   project's template** and does not describe this codebase at all.
-
-Reading 3 is plausible: `CLAUDE.md` also contains a generic
-"Common AI Mistakes" section that appears verbatim in
-`claude-code-frequent-mistakes.md`, indicating the file is partly assembled
-from reusable material. **Until this is answered, treat sections 3–5 below as
-unwritten rather than as permissive.**
-
-### 2.2 Shared Spine services
-
-`CLAUDE.md` promises a map of these. Nothing in this repo identifies what the
-Shared Spine is, what it provides, who owns it, or whether Kingdom Grace
-consumes any part of it. On present evidence Kingdom Grace consumes **none**:
-its only external dependencies are its own Supabase project, the Claude API via
-`kgfcm-ai-proxy`, Resend, and Vercel.
-
-**Needed:** the list of Spine services, their owners, and their consumers.
-
-### 2.3 Cross-system read paths
-
-None exist in this repo (§1.2). Whether any are *intended* — for example
-shared identity, shared analytics, or a common member directory — is unknown.
-
-**Needed:** the permitted read paths, their direction, and what authorises
-each. Absent that list, the operative rule is §3.1: none.
-
-### 2.4 Data ownership rules
-
-Within Kingdom Grace, ownership is clear and enforced by RLS: 21 tables, all
-with RLS enabled, keyed on `auth.uid()` via `pastor_id_for_current_user()` and
-`is_bishop()`. What is undefined is ownership of anything spanning systems —
-which does not currently arise, because nothing spans them.
-
-**Needed:** if a member, church, or event can exist in more than one system,
-which system is the system of record.
-
----
-
-## 3. Operative rules until §2 is answered
-
-These follow from what is established and are safe to enforce now.
-
-### 3.1 No cross-system access
-
-Do not read from, write to, or join against another system's database from
-this one. Do not provision a credential, connector, or service key that spans
-both Supabase organisations. If a task appears to require it, **stop and ask**
-— that requirement is a design decision, not an implementation detail.
-
-### 3.2 Confirm which project you are pointed at
-
-The credential separation in §1.1 is the safeguard, and it is only a safeguard
-while nobody widens it. Before any write, confirm the target:
+Every write goes to `kseocbwhuveieqhayske`. Confirm the target before any
+schema or data change:
 
 ```bash
-npx supabase@latest projects list      # expect kseocbwhuveieqhayske only
+npx supabase@latest projects list      # expect kseocbwhuveieqhayske
 ```
 
-The Kingdom Grace project ref is pinned in `.mcp.json` and in
-`PROJECT_STATE.md`. A connector that lists a project you did not expect is a
-signal to stop, not to proceed carefully.
+**This is not theoretical.** On 2026-08-28 a session began with the Supabase
+connector still authenticated to an unrelated account belonging to the same
+operator; `list_projects` returned that account's project and every Kingdom
+Grace call returned `permission denied` until the connector was reconnected.
+No data was touched, but the correct reflex when a connector lists a project
+you did not expect is to **stop and re-check the connection**, not to reason
+about why the unexpected project might be relevant. Treat an unexpected
+project as a misconfiguration, never as a discovery.
 
-### 3.3 Migrations and schema
+### 2.2 No credential may span systems
 
-CLI only, never the MCP connector — see `PROJECT_STATE.md` section D for the
-full rule and the drift it was written in response to.
+The operator runs other platforms. Do not create a Supabase key, MCP
+connector, service-role token, or CI secret that can reach Kingdom Grace and
+another system at once. Kingdom Grace's secrets are inspectable by name, never
+value:
 
-### 3.4 No shared secrets
+```bash
+npx supabase@latest secrets list
+```
 
-Each system holds its own keys. Do not copy a key, API token, or service-role
-credential from one system's environment into the other's, and do not
-introduce a secret store spanning both. Kingdom Grace's secrets are listed by
-name (never value) via `npx supabase@latest secrets list`.
+Do not copy a key between systems in either direction.
 
-### 3.5 Refactor guardrails
+### 2.3 Migrations are CLI-only
 
-- **Do not extract "shared" code across the boundary.** Duplication across two
-  independently-owned systems is correct; a shared library creates a coupling
-  this document cannot yet authorise.
-- **Do not rename to match another system's conventions.** The `rf_` table
-  prefix, `kgfcm-` function slugs, and `C.appId = "kgfcm"` are this system's.
-  See `PROJECT_STATE.md` A5 — the slugs are a tenancy decision, not cosmetics.
-- **Keep the single-file frontend.** `CLAUDE.md` Architecture Rules; not a
-  boundary matter, but the most common unrequested refactor.
-- **A boundary change is never incidental to another task.** If a piece of work
-  seems to require crossing, that is the work — raise it separately.
+Never apply DDL through the MCP connector. See `PROJECT_STATE.md` section D
+for the rule and the ledger drift that produced it.
+
+### 2.4 Refactor guardrails
+
+- **Do not extract shared code toward another project.** If Kingdom Grace and
+  another system need the same thing, duplicate it. A shared library couples
+  two independently-owned systems and is a decision for the operator, not a
+  refactor.
+- **Do not rename to another system's conventions.** The `rf_` table prefix,
+  the `kgfcm-` function slugs and `C.appId = "kgfcm"` are this system's
+  identity. Changing the slugs is a multi-tenancy decision — see
+  `PROJECT_STATE.md` A5.
+- **Keep the single-file frontend.** No build step, no framework, no bundler.
+  `CLAUDE.md` Architecture Rules.
+- **White-labelling is not a boundary change.** Branding resolves from
+  `rf_network_config` at runtime; a second tenant is a data question first and
+  a slug question second.
 
 ---
 
-## 4. How to complete this document
+## 3. The System A / System B language in CLAUDE.md is carry-over
 
-Answer §2.1 first; the rest is unblocked by it. If the answer is reading 3 —
-that the A/B map does not describe this codebase — then say so here plainly and
-delete the corresponding promise from `CLAUDE.md` rather than leaving a
-reference to a boundary that does not apply. A governance document that
-describes the wrong system is worse than one that admits a gap.
+`CLAUDE.md` names "System A (WellFit)" and "System B (Envision Atlus)". Both
+belong to other work by the same operator. **Neither describes Kingdom
+Grace**, and this repo has no relationship with either.
+
+Evidence:
+
+- The six-line block in `CLAUDE.md` is the **only** occurrence of "System A",
+  "System B", "Shared Spine" or "Envision Atlus" in the entire repo. Nothing
+  references it; nothing depends on it.
+- It arrived in `8e191d8`, the first substantive commit, as part of the initial
+  `CLAUDE.md` scaffold — not added later when someone was reasoning about
+  architecture. `CLAUDE.md` also reproduces `claude-code-frequent-mistakes.md`
+  verbatim, so the file is demonstrably assembled from reusable material.
+- The operator confirmed on 2026-08-28 that they do not recognise the terms as
+  describing this project.
+
+**Recommended:** delete the "Governance Boundaries" bullet list from
+`CLAUDE.md` and point it at this file instead. A boundary map for systems this
+app has no relationship with costs a future session real time chasing a
+phantom — which is exactly what happened on 2026-08-28, when an unrelated
+project appearing in a misconfigured connector was mistaken for one side of
+that map and written up as a boundary before the operator corrected it.
+
+---
+
+## 4. Open item — a foreign test account in production
+
+`auth.users` holds an account on a **`@thewellfitcommunity.org`** address:
+role `pastor`, created 2026-05-14, last sign-in 2026-05-15. Commit `f85c6c7`,
+*"Fix pastor-side regressions caught in Maria test session"*, confirms it is a
+development test account — the operator tested Kingdom Grace using an address
+from another of their platforms. Migration
+`20260515173803_ann_self_read_includes_own_removed.sql` was written to fix an
+RLS bug that session surfaced.
+
+It is currently an **active pastor login in a production pastoral network**.
+It should be removed.
+
+Removal is not a single delete. It touches `auth.users`, the `rf_pastors`
+profile row, and that pastor's `rf_checkins`, `rf_prayer_requests` and any
+other content rows — of which the live counts are small but non-zero. Scope it
+explicitly and confirm before executing.
