@@ -282,6 +282,56 @@ References to it survive in the superseded 2026-04-12 and 2026-08-14
 handoff sections below. Those are kept as history; the file they name is
 gone and must not be reconstructed from them.
 
+### H. Outbound email — the domain is send-only, and two defects follow
+
+`kingdomgracefamily.com` is configured for Resend sending and nothing else.
+Resolved 2026-08-28 over DNS-over-HTTPS:
+
+| Record | Value |
+|---|---|
+| `kingdomgracefamily.com` MX | **none** |
+| `kingdomgracefamily.com` TXT | **none** — no SPF, no DMARC |
+| `resend._domainkey` TXT | `p=MIGfMA0GCSq…` (DKIM, verified) |
+| `send.kingdomgracefamily.com` MX | `feedback-smtp.us-east-1.amazonses.com` |
+| `send.kingdomgracefamily.com` TXT | `v=spf1 include:amazonses.com ~all` |
+
+That is Resend's standard verified-domain setup. It means
+`noreply@kingdomgracefamily.com` is a from-address inside Resend's API, not a
+mailbox: there is no inbox, no credentials, and nothing to sign in to. Sending
+anything from the ministry's own domain requires either the `RESEND_API_KEY`
+(a Supabase secret, readable only as a digest) or a real mailbox on the domain.
+
+**H1 — Every PIN and reset email is unreplyable, silently.** `RESEND_FROM` is
+**not set** as a secret, so `kgfcm-admin-pin-issue:57` and
+`kgfcm-pin-reset:29` both fall back to the hardcoded
+`Kingdom Grace <noreply@kingdomgracefamily.com>`. With no MX on the apex, a
+reply to that address does not bounce to anyone — it simply fails. A pastor or
+admin who receives a PIN, hits trouble, and replies is shouting into a void,
+and nobody learns they tried. This is a pastoral-care defect as much as a
+technical one: the people most likely to reply are the ones already stuck at
+the door. Fix is either a real mailbox (below) or a `RESEND_FROM` /
+`Reply-To` pointing somewhere a human reads.
+
+**H2 — No DMARC record.** DKIM and SPF are both correct on the `send.`
+subdomain, but the apex publishes no DMARC policy. Microsoft weights DMARC
+when filtering, and Outlook/Hotmail is exactly where these have to land — the
+one provisioned admin is on `hotmail.com`. Adding a DMARC TXT record is a
+one-line DNS change that measurably improves the odds a PIN reaches the inbox
+instead of Junk. Worth doing before the network grows and PIN delivery becomes
+a support burden.
+
+**The fix that closes both:** stand up a real mailbox on the domain (Google
+Workspace or Microsoft 365), add MX, publish SPF and DMARC on the apex, and
+point `RESEND_FROM` at an address that can receive replies. That also gives
+the network a sending identity for ordinary correspondence — on 2026-08-28 a
+note to the provisioned admin had to go out from the developer's personal
+Gmail because no ministry address exists to send from.
+
+**Do not** solve this by adding a general-purpose "send arbitrary email" edge
+function. The two existing senders are narrowly scoped to PINs and reset codes
+on purpose; a generic mailer inside a production auth system is a larger
+liability than the gap it closes.
+
 ---
 
 ## 🔭 NEXT UP — white-label + platform/app views (opened 2026-08-14)
