@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# SessionStart hook — re-emit the KGFCM security frame and feedback memory
-# at the top of every new session so the next model can't skim-read past it.
+# SessionStart hook — re-emit the KGFCM security frame, the connector-target
+# guard, and the feedback memory at the top of every new session so the next
+# model can't skim-read past them.
 set -u
 
-MEM_DIR="/home/codespace/.claude/projects/-workspaces-KingdomGraceFamilyofChurchesandMinistries/memory"
-NO_DEMO=""
-AUDIT=""
-STAKES=""
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 
-if [ -f "$MEM_DIR/feedback_no_demo_grade_code.md" ]; then
-  NO_DEMO=$(cat "$MEM_DIR/feedback_no_demo_grade_code.md")
-fi
-if [ -f "$MEM_DIR/feedback_audit_logger_only.md" ]; then
-  AUDIT=$(cat "$MEM_DIR/feedback_audit_logger_only.md")
-fi
-if [ -f "$MEM_DIR/project_kgfcm_stakes.md" ]; then
-  STAKES=$(cat "$MEM_DIR/project_kgfcm_stakes.md")
-fi
+# Guard docs live in the repo at memory/ (the hook messages in
+# content-scan.sh cite those paths, so a human who trips the guard can read
+# them). Fall back to the per-machine Claude memory dir for anything not yet
+# promoted into the repo.
+AUTO_MEM="/home/codespace/.claude/projects/-workspaces-KingdomGraceFamilyofChurchesandMinistries/memory"
+
+read_memory() {
+  # $1 = filename; prefer the in-repo copy, fall back to auto-memory.
+  if   [ -f "$ROOT/memory/$1" ];  then cat "$ROOT/memory/$1"
+  elif [ -f "$AUTO_MEM/$1" ];     then cat "$AUTO_MEM/$1"
+  fi
+}
+
+NO_DEMO=$(read_memory feedback_no_demo_grade_code.md)
+AUDIT=$(read_memory feedback_audit_logger_only.md)
 
 CONTEXT=$(cat <<EOF
 🛡️ KGFCM SECURITY FRAME — read this before any work on this codebase.
@@ -28,15 +32,46 @@ Not an MVP. Not a prototype. Not a demo.
 The user has explicitly rejected "we can do it later" framing.
 ═══════════════════════════════════════════════════════════════
 
+═══════════════════════════════════════════════════════════════
+CONNECTOR TARGET — verify before any write.
+
+  Supabase project   kseocbwhuveieqhayske
+  Vercel team        kingdomofgraceministries-projects
+  Production domain  kingdomgracefamily.com
+
+Claude's connectors authenticate to an ACCOUNT, not to this repo.
+They persist across sessions and across projects, so they can still
+be pointed at other work. GitHub -> Vercel -> Supabase being wired
+correctly does NOT mean the Claude connector is. That is a second,
+separate connection per service and nothing warns you when it is
+pointed elsewhere.
+
+Before any schema, data, secret or deploy write, confirm the target:
+
+    npx supabase@latest projects list      # expect kseocbwhuveieqhayske
+
+An unexpected project in a connector listing is a MISCONFIGURATION,
+never a discovery. Stop and re-check the connection — do not reason
+about why the unexpected project might be relevant.
+
+Real incident, 2026-08-28: a session opened with the connector still
+authenticated to another of the operator's accounts. The unrelated
+project it listed was mistaken for one side of the "System A / System
+B" boundary named in CLAUDE.md and written into governance-boundaries.md
+before the operator caught it. No data was touched, but a different
+client's project ref reached this repo. See governance-boundaries.md
+section 2.1.
+
+NOTE: the System A / System B language in CLAUDE.md is carry-over from
+the operator's other work. It does NOT describe this codebase.
+Kingdom Grace is a standalone system.
+═══════════════════════════════════════════════════════════════
+
 ${NO_DEMO}
 
 ───────────────────────────────────────────────────────────────
 
 ${AUDIT}
-
-───────────────────────────────────────────────────────────────
-
-${STAKES}
 
 ═══════════════════════════════════════════════════════════════
 HARD-BLOCK HOOKS ARE LIVE IN THIS PROJECT.
@@ -62,6 +97,9 @@ PreToolUse Bash will refuse:
 .githooks/pre-commit runs the same content scanner over staged files.
 
 DO NOT TRY TO BYPASS THESE HOOKS. Fix the underlying code instead.
+
+Migrations are CLI-only — never apply DDL through the MCP connector.
+See PROJECT_STATE.md section D.
 ═══════════════════════════════════════════════════════════════
 EOF
 )
