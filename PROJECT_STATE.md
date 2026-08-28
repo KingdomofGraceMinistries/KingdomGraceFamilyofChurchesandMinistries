@@ -214,15 +214,19 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   stop and re-check the connection instead of reasoning about why it might be
   relevant. No data in either system was touched.
 
-  One real finding survives: `auth.users` holds an account on a
-  **`@thewellfitcommunity.org`** address (role `pastor`, created 2026-05-14,
-  last sign-in 2026-05-15). Commit `f85c6c7`, "Fix pastor-side regressions
-  caught in Maria test session", confirms it is a development test account —
-  the operator tested Kingdom Grace with an address from another of their
-  platforms, and migration `20260515173803` exists to fix an RLS bug that
-  session surfaced. It is an active pastor login in production and should be
-  removed; removal touches `auth.users`, `rf_pastors` and that pastor's
-  content rows, so scope it explicitly.
+  **The test pastor account stays — do not remove it.** `rf_pastors` holds
+  exactly one row: a test pastor on a `@thewellfitcommunity.org` address
+  (created 2026-05-14, working login). An earlier draft of this entry called
+  it a stray artifact due for deletion. The operator corrected that on
+  2026-08-28: it is deliberate and needed. It is also the **only** pastor in
+  the network, so deleting it would leave an empty bishop dashboard, and it is
+  the only way to exercise pastor-scoped RLS — the bishop's **View App**
+  renders the pastor UI while still carrying a bishop JWT, so `is_bishop()`
+  stays true and `pastor_id_for_current_user()` resolves differently. Migration
+  `20260515173803` exists because this account surfaced a soft-delete RLS bug
+  no bishop session would have hit (commit `f85c6c7`). The foreign email
+  domain is cosmetic; no credential or data crosses systems. Revisit at
+  handoff, not before. See `governance-boundaries.md` §4.
 - ~~Two memory files cited by every guard violation message do not exist.~~
   **Written 2026-08-28.** `feedback_no_demo_grade_code.md` documents the five
   hard-blocked patterns and why each was banned (all five were shipped here

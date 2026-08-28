@@ -122,20 +122,34 @@ that map and written up as a boundary before the operator corrected it.
 
 ---
 
-## 4. Open item — a foreign test account in production
+## 4. The test pastor account is deliberate — do not remove it
 
-`auth.users` holds an account on a **`@thewellfitcommunity.org`** address:
-role `pastor`, created 2026-05-14, last sign-in 2026-05-15. Commit `f85c6c7`,
-*"Fix pastor-side regressions caught in Maria test session"*, confirms it is a
-development test account — the operator tested Kingdom Grace using an address
-from another of their platforms. Migration
-`20260515173803_ann_self_read_includes_own_removed.sql` was written to fix an
-RLS bug that session surfaced.
+`rf_pastors` holds exactly **one** row: a test pastor on a
+`@thewellfitcommunity.org` address, created 2026-05-14, with a working login.
+The address belongs to another of the operator's platforms, which is why it
+looks like a boundary artifact. It is not one — it is a deliberate test
+account, confirmed by the operator on 2026-08-28, and **it is needed.**
 
-It is currently an **active pastor login in a production pastoral network**.
-It should be removed.
+**Do not delete it.** An earlier draft of this section said it should be
+removed. That was wrong twice over:
 
-Removal is not a single delete. It touches `auth.users`, the `rf_pastors`
-profile row, and that pastor's `rf_checkins`, `rf_prayer_requests` and any
-other content rows — of which the live counts are small but non-zero. Scope it
-explicitly and confirm before executing.
+1. It is the **only** pastor in the network. Removing it leaves zero — an
+   empty bishop dashboard and no pastor-side anything to look at.
+2. It is the only way to exercise pastor-scoped RLS. The bishop's **View App**
+   renders the pastor UI but still carries a bishop JWT, so `is_bishop()`
+   returns true and `pastor_id_for_current_user()` resolves differently. Every
+   policy that distinguishes a pastor from staff is untested without a real
+   pastor login. Migration
+   `20260515173803_ann_self_read_includes_own_removed.sql` exists precisely
+   because this account surfaced a soft-delete RLS bug that no bishop session
+   would have hit — see commit `f85c6c7`, *"Fix pastor-side regressions caught
+   in Maria test session"*.
+
+The email domain is cosmetic. No credential, key or data crosses between
+systems; it is simply an address the operator controls.
+
+**Revisit at handoff**, not before — once real pastors are provisioned and the
+network is live, decide whether the test account stays as a permanent QA login
+or is retired. If it is ever retired, note that removal touches `auth.users`,
+the `rf_pastors` row, and that pastor's `rf_checkins` / `rf_prayer_requests` /
+`rf_wins` content rows.
