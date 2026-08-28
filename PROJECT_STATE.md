@@ -291,7 +291,8 @@ Resolved 2026-08-28 over DNS-over-HTTPS:
 | Record | Value |
 |---|---|
 | `kingdomgracefamily.com` MX | **none** |
-| `kingdomgracefamily.com` TXT | **none** — no SPF, no DMARC |
+| `kingdomgracefamily.com` TXT | none (no apex SPF — correct; SPF lives on the `send.` subdomain) |
+| `_dmarc.kingdomgracefamily.com` TXT | `v=DMARC1; p=none` — **added 2026-08-28**, see H2 |
 | `resend._domainkey` TXT | `p=MIGfMA0GCSq…` (DKIM, verified) |
 | `send.kingdomgracefamily.com` MX | `feedback-smtp.us-east-1.amazonses.com` |
 | `send.kingdomgracefamily.com` TXT | `v=spf1 include:amazonses.com ~all` |
@@ -313,20 +314,39 @@ technical one: the people most likely to reply are the ones already stuck at
 the door. Fix is either a real mailbox (below) or a `RESEND_FROM` /
 `Reply-To` pointing somewhere a human reads.
 
-**H2 — No DMARC record.** DKIM and SPF are both correct on the `send.`
-subdomain, but the apex publishes no DMARC policy. Microsoft weights DMARC
-when filtering, and Outlook/Hotmail is exactly where these have to land — the
-one provisioned admin is on `hotmail.com`. Adding a DMARC TXT record is a
-one-line DNS change that measurably improves the odds a PIN reaches the inbox
-instead of Junk. Worth doing before the network grows and PIN delivery becomes
-a support burden.
+**H2 — ~~No DMARC record.~~ FIXED 2026-08-28.** The apex published no DMARC
+policy while Microsoft weights DMARC when filtering, and Outlook/Hotmail is
+exactly where these have to land — the one provisioned admin is on
+`hotmail.com`. `v=DMARC1; p=none` now published at
+`_dmarc.kingdomgracefamily.com`, verified resolving from both Google and
+Cloudflare public resolvers. The domain now has the full trio: DKIM
+(`resend._domainkey`), SPF (`send.` subdomain), DMARC (apex).
 
-**The fix that closes both:** stand up a real mailbox on the domain (Google
-Workspace or Microsoft 365), add MX, publish SPF and DMARC on the apex, and
-point `RESEND_FROM` at an address that can receive replies. That also gives
-the network a sending identity for ordinary correspondence — on 2026-08-28 a
-note to the provisioned admin had to go out from the developer's personal
-Gmail because no ministry address exists to send from.
+**Why `p=none` and not something stricter.** Alignment already passes —
+Resend signs DKIM as the apex domain, and the SPF return-path is
+`send.kingdomgracefamily.com`, a subdomain, which satisfies DMARC's default
+relaxed alignment. So `p=quarantine` would not reject legitimate mail today.
+It was not chosen because there is nowhere to send aggregate reports: a `rua=`
+pointing at a Gmail address only works if `gmail.com` publishes an
+authorisation record for this domain, which is not something we can add.
+Without reports, a future alignment break would send PINs to spam silently.
+`p=none` gets the record receivers look for at zero risk. Tighten to
+`p=quarantine` once a real mailbox exists on the domain (see below) and `rua`
+can point somewhere that receives.
+
+**DNS is managed by Vercel** (`ns1`/`ns2.vercel-dns.com`). Note for next time:
+the Vercel MCP connector covers deployments, projects and domain *purchase*
+but exposes **no DNS-record tool**, and the Vercel CLI inside a dev container
+is a separate credential store from any local login. For one record, the
+dashboard is faster than authenticating a CLI.
+
+**What still closes H1:** stand up a real mailbox on the domain (Google
+Workspace or Microsoft 365), add MX, and point `RESEND_FROM` at an address
+that can receive replies. That also gives the network a sending identity for
+ordinary correspondence — on 2026-08-28 a note to the provisioned admin had to
+go out from the developer's personal Gmail because no ministry address exists
+to send from — and it unblocks tightening DMARC to `p=quarantine` with a
+working `rua`.
 
 **Do not** solve this by adding a general-purpose "send arbitrary email" edge
 function. The two existing senders are narrowly scoped to PINs and reset codes
