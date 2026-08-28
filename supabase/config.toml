@@ -375,6 +375,55 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# ── Edge function JWT verification ──────────────────────────────
+# Mirrors the deployed state, verified against the live project on
+# 2026-08-28. Declared explicitly because the CLI applies its own
+# default when a function is absent from this file: an undeclared
+# `supabase functions deploy` would flip the four PIN endpoints to
+# verify_jwt = true and lock every pastor out of login.
+#
+# The four `false` entries are the pre-session auth boundary — the
+# caller has no JWT yet by definition. Each one does its own
+# rate limiting and constant-time comparison in the function body
+# (see _shared/rate_limit.ts). Every other function requires a
+# verified caller.
+
+[functions.kgfcm-pin-login]
+verify_jwt = false
+
+[functions.kgfcm-pin-register]
+verify_jwt = false
+
+[functions.kgfcm-pin-reset]
+verify_jwt = false
+
+[functions.kgfcm-pin-reset-confirm]
+verify_jwt = false
+
+[functions.kgfcm-admin-pin-issue]
+verify_jwt = true
+
+[functions.kgfcm-ai-proxy]
+verify_jwt = true
+
+[functions.kgfcm-audit]
+verify_jwt = true
+
+[functions.kgfcm-checkin-remind]
+verify_jwt = true
+
+[functions.kgfcm-devotion-generate]
+verify_jwt = true
+
+[functions.kgfcm-devotion-generate-v2]
+verify_jwt = true
+
+[functions.kgfcm-push-notify]
+verify_jwt = true
+
+[functions.kgfcm-push-send]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

@@ -22,6 +22,28 @@ case "$FILE_PATH" in
   */claude-code-frequent-mistakes.md) exit 0 ;;
   */governance-boundaries.md) exit 0 ;;
   */GUIDE-bishop-admin.md) exit 0 ;;
+
+  # Pre-SEC-3 migrations: immutable applied history, exempted by exact
+  # path. These three were written in the pre-auth era and contain
+  # `to anon ... using(true)` policies that SEC-3 later dropped
+  # (20260513170000_real_auth.sql). Verified against the live project
+  # on 2026-08-28: one anon policy remains network-wide —
+  # config_anon_branding_read, a scoped SELECT on rf_network_config
+  # that excludes bishop_pin_hash / bishop_pin_bcrypt / bishop_email /
+  # vapid_private_key / resend_api_key. Zero open anon writes.
+  #
+  # An applied migration cannot be edited without breaking the
+  # reproducibility the ledger depends on, so the offending SQL cannot
+  # be removed. They only became visible to the scanner on 2026-08-28,
+  # when they were renamed from malformed versions (20260408_001 etc.,
+  # where _003 and _004 both collapsed to "20260412") to valid 14-digit
+  # ones — git reports a rename as a new path.
+  #
+  # Exempt by exact filename, never by a `migrations/*` wildcard or a
+  # date cutoff: every NEW migration must still be scanned in full.
+  */supabase/migrations/20260408000100_create_tables.sql) exit 0 ;;
+  */supabase/migrations/20260412000300_wins_images_outreach.sql) exit 0 ;;
+  */supabase/migrations/20260412000400_voice_seen_reactions_fasts_events_credentials.sql) exit 0 ;;
 esac
 
 CONTENT=$(cat)
