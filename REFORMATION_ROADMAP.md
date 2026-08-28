@@ -70,13 +70,36 @@ What is wrong is the *value*. `SB_SECRET_KEY` currently holds a **publishable** 
 
 > **Action required (dashboard):** set `SB_SECRET_KEY` to a genuine `sb_secret_…` key. Keep **both** variables populated — that is the intended arrangement for the transition, and neither should be removed until the legacy model is fully retired. Once both hold secret keys the resolution order stops mattering, because either can carry the load.
 
+> **DONE 2026-08-28.** `SB_SECRET_KEY` now reports digest `e78a09f5…`, identical
+> to `SUPABASE_SERVICE_ROLE_KEY` — both hold the same genuine secret key, which
+> is the arrangement described above, and identity with the key already serving
+> production proves the new value is valid rather than a mistyped paste. Before
+> the fix the defect was proven by hash preimage: SHA-256 of the
+> `sb_publishable_…` key read from `kg-pastoral-network.html` matched the digest
+> then reported for `SB_SECRET_KEY`. No redeploy was required, since
+> `SUPABASE_SERVICE_ROLE_KEY` resolves first and never changed.
+
 **3. Do NOT invert the resolution order.** The first pass below proposed `SB_SECRET_KEY ?? SUPABASE_SERVICE_ROLE_KEY`. Against the actual environment that would have switched all 12 functions to the publishable key instantly and taken production down. The current order is correct and should stay until `SB_SECRET_KEY` is fixed.
 
 **4. The only genuine remaining exposure is `pg_net`.** Vault secret `kgfcm_service_role` is confirmed a **legacy JWT** (219 chars, three segments) and is what the `kgfcm_daily_devotion` cron sends as its bearer. It dies with the legacy key model.
 
 This is not a value swap. `kgfcm-devotion-generate-v2` identifies the cron caller by *decoding* the bearer and checking `claims.role === "service_role"`. Handed an opaque `sb_secret_` key, `decodeJwtClaims()` returns null and the request is refused by the `Invalid JWT` 401. Migrating the cron therefore needs a deliberate auth redesign — options include a shared secret header verified in-function, or moving the schedule off `pg_net` onto a Supabase scheduled function. **Own session, not a tail-end change.**
 
-**Net:** I1 is far smaller than written. One dashboard fix (item 2), one scoped redesign (item 4). The rest is already complete.
+**5. The functions read no new-model variable — added 2026-08-28, from the docs.** Every claim in this entry before today was reasoned from the codebase and from runtime probing, never from Supabase's own documentation. Reading it changes the shape of what is left.
+
+Per [Migrating to publishable and secret API keys](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys), Step 4:
+
+> "Edge Functions read their keys from environment variables. Supabase adds two new ones to your functions' environment, `SUPABASE_PUBLISHABLE_KEYS` and `SUPABASE_SECRET_KEYS`, alongside the legacy `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`."
+
+Both plural variables **are present** in this project's secrets, and **zero of the twelve functions read either one**. Every function still resolves through a legacy-named variable with a `?? SB_*` fallback. The guide's Option 1 — read the new keys from the environment — would retire all twelve fallback chains and end the recurring confusion about which variable holds which key type. That confusion is not hypothetical: it produced the `SB_SECRET_KEY` defect in item 2, and on 2026-08-28 it produced a wrong claim in `PROJECT_STATE.md` about `SUPABASE_ANON_KEY` that had to be retracted.
+
+Note also that **`anon` and publishable are two different keys**, not two names for one. Anon is a JWT signed by the project's JWT secret; publishable is an opaque `sb_publishable_…` that can be created, named and revoked independently. The migration guide maps one onto the other as a *replacement*, and states the publishable key "carries the same low privileges as the `anon` key" — which is why `SUPABASE_ANON_KEY` currently holding a publishable value is a mislabel rather than a privilege change. Why it holds that value is unestablished; do not assume the platform put it there.
+
+The docs also confirm the deadline this entry was opened for: the legacy `anon` and `service_role` keys "keep working until the end of 2026."
+
+---
+
+**Net:** item 2 is **done** (2026-08-28). What remains is item 4, the `pg_net` cron auth redesign, and item 5, moving the twelve functions onto `SUPABASE_PUBLISHABLE_KEYS` / `SUPABASE_SECRET_KEYS`. Item 5 is the one that actually retires the legacy dependency; item 4 is the one that breaks first if ignored.
 
 ---
 

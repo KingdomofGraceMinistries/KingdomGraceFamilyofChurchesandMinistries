@@ -146,11 +146,40 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
 
 ### F. Still open after this session
 
-- **`ALLOWED_ORIGINS` is unset**, so `_shared/cors.ts:22` `isOriginAllowed()`
-  returns true for any origin. Mitigating: `corsHeaders()` emits an empty ACAO
-  in that state, so browser traffic fails anyway — the real gap is Origin-less
-  (non-browser) callers, and six functions skip the check entirely for those.
-  Set the var, then delete the fail-open branch. Tracked as SEC-5.
+- **CORRECTION — `ALLOWED_ORIGINS` is set, and CORS is locked.** An earlier
+  draft of this section claimed the variable was unset and that
+  `isOriginAllowed()` was therefore failing open. That was wrong: it read
+  SEC-5's "Action: lock CORS by setting `ALLOWED_ORIGINS`" as an open to-do
+  instead of checking the environment. `supabase secrets list` shows the
+  variable present since **2026-05-14**.
+
+  Verified empirically on 2026-08-28 by sending preflights with different
+  `Origin` headers to `kgfcm-pin-login` and reading the ACAO back — an echoed
+  origin is allow-listed, while a constant `https://kingdomgracefamily.com`
+  is just `ALLOWED[0]`, the fallback for anything unmatched:
+
+  | Origin | ACAO | Verdict |
+  |---|---|---|
+  | `https://kingdomgracefamily.com` | echoed | allowed |
+  | `https://www.kingdomgracefamily.com` | echoed | allowed |
+  | `https://kingdom-grace-familyof-churchesand.vercel.app` | `…gracefamily.com` | not allowed |
+  | `https://kingdom-grace-familyof-church-kingdomofgraceministries-projects.vercel.app` | `…gracefamily.com` | not allowed |
+  | `https://not-your-site.example.com` (control) | `…gracefamily.com` | correctly rejected |
+
+  The allowlist is the apex plus `www` and nothing else. **This is the intended
+  posture — confirmed 2026-08-28 that nobody uses the Vercel-assigned URLs.**
+  Do not add them. Note the consequence so it is not later mistaken for a bug:
+  at either `.vercel.app` domain the static app loads but **login is dead** —
+  seven functions, `kgfcm-pin-login` among them, return `403 Forbidden origin`
+  for an unallowed origin, and the browser would reject the ACAO mismatch
+  regardless.
+
+  **What remains is genuinely small.** Because `ALLOWED` is non-empty, the
+  `if (ALLOWED.length === 0) return true` branch at `_shared/cors.ts:22` never
+  executes — it is dead code in this deployment, not a live gap. It should
+  still be deleted: it silently disables the origin gate on every function the
+  moment the variable is cleared or mistyped, which is the opposite of how a
+  security control should fail. Low priority, no urgency.
 - **Four stale `--no-verify-jwt` instructions** remain, all in the superseded
   handoff sections of this file. They contradict the live deployment, where
   `kgfcm-ai-proxy` runs `verify_jwt: true`. The fifth, in
@@ -172,9 +201,54 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   contributor who trips the guard can actually read them. They are covered by
   the scanner's `*/memory/*` exemption, which they need: they quote the banned
   strings verbatim.
-- Carried forward unchanged: `SB_SECRET_KEY` holds a publishable key,
-  the `pg_net` cron auth redesign, and the A1/A2 white-label work. See the
-  NEXT UP section and `REFORMATION_ROADMAP.md` I1.
+- ~~`SB_SECRET_KEY` holds a publishable key.~~ **FIXED 2026-08-28 by the user.**
+  Proven before the fix and verified after, both from `supabase secrets list`,
+  which returns a plain SHA-256 of each value. Proof of the defect was a hash
+  preimage match: SHA-256 of the `sb_publishable_…` key read straight out of
+  `kg-pastoral-network.html` equals `87d76609…c92cae`, the digest then reported
+  for `SB_SECRET_KEY`. The variable literally held the string the browser
+  downloads on every page load. That confirmed the 2026-08-14
+  diagnostic-function finding by a second, independent route.
+
+  After the fix `SB_SECRET_KEY` reports `e78a09f5…`, identical to
+  `SUPABASE_SERVICE_ROLE_KEY` — the strongest available evidence it is valid,
+  since that is the key already doing all the real work in production. This is
+  exactly the arrangement `REFORMATION_ROADMAP.md` I1 asked for: both variables
+  populated with genuine secret keys, so `SUPABASE_SERVICE_ROLE_KEY ??
+  SB_SECRET_KEY` can no longer collapse to anon privileges if the first is ever
+  absent. No redeploy was needed — the first variable is unchanged, so runtime
+  behaviour is byte-identical.
+
+- **`SUPABASE_ANON_KEY` also holds the publishable key — and the reason is
+  unknown. Do not assume it is fine.** An earlier draft of this section
+  asserted that Supabase injects the publishable key into that variable now
+  that the legacy anon JWT is retired. **That claim is unsupported and was
+  removed.** The docs
+  ([Migrating to publishable and secret API keys](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys))
+  say the platform *adds* `SUPABASE_PUBLISHABLE_KEYS` and
+  `SUPABASE_SECRET_KEYS` **alongside** the legacy `SUPABASE_ANON_KEY` and
+  `SUPABASE_SERVICE_ROLE_KEY` — they are two different keys, anon being a JWT
+  signed by the project's JWT secret and publishable an opaque
+  `sb_publishable_…` that rotates independently.
+
+  Severity is genuinely lower than the `SB_SECRET_KEY` case and should not be
+  conflated with it. Three functions read it —
+  `kgfcm-pin-login:25`, `kgfcm-pin-register:26`, `kgfcm-pin-reset-confirm:27`,
+  all as `SUPABASE_ANON_KEY ?? SB_PUBLISHABLE_KEY` — and the docs state the
+  publishable key "carries the same low privileges as the `anon` key", so this
+  is a **mislabel at the same privilege level**, not a downgrade. Logins work.
+
+- **Twelve functions still read no new-model variable.** `SUPABASE_PUBLISHABLE_KEYS`
+  and `SUPABASE_SECRET_KEYS` are both present in the project's secrets and
+  **zero functions read either**. Migrating onto them is Step 4 / Option 1 of
+  the migration guide and would retire every `?? SB_*` fallback chain, ending
+  the ambiguity about which variable holds what. This is now the substantive
+  remainder of I1.
+
+- Carried forward unchanged: the `pg_net` cron auth redesign and the A1/A2
+  white-label work. See the NEXT UP section and `REFORMATION_ROADMAP.md` I1.
+  The docs confirm the deadline I1 records: legacy `anon` and `service_role`
+  keep working **until the end of 2026**.
 
 ### G. `RUN_THIS_IN_SUPABASE.sql` deleted — do not restore it
 
@@ -324,7 +398,7 @@ Hard-block hooks now installed at `.claude/settings.json` to prevent regression
 | SEC-2 | Replace `Math.random()` reset codes + `btoa(...)` invite tokens with CSPRNG | — | **DONE 2026-05-13** | Final HTML grep returns zero Math.random / security-context btoa. Reset codes now generated by `kgfcm-pin-reset` via `generateCode()` (CSPRNG, 8 hex chars). Invite tokens via `crypto.randomUUID()`. Admin creation `pin_hash: btoa(pin)` replaced by `create_admin()` SECURITY DEFINER RPC with bcrypt. (Remaining `btoa()` in HTML is the WebAuthn credential.rawId base64 encoding — legitimate bytes-to-text use.) |
 | SEC-3 | Tighten RLS — remove `anon using(true)/with check(true)`, require JWT | CRITICAL | **DONE 2026-05-13** | All old `using(true)` anon policies dropped. New policies key on `auth.uid()` and `is_bishop()` (JWT app_metadata.role). Column-level GRANT excludes pin_bcrypt + reset_token_hash. Post-migration assertion: zero open anon writes remain. |
 | SEC-4 | Email/SMS delivery for reset codes — stop echoing to browser | — | **DONE 2026-05-13** | Two new edge functions: `kgfcm-pin-reset` (sends 8-char CSPRNG code via Resend, stores SHA-256 hash in `reset_token_hash`, constant-time `{sent:true}` response regardless of email-existence — enumeration defense) and `kgfcm-pin-reset-confirm` (verifies hash, bcrypts new PIN, issues session for auto-login). Bishop's reset-pastor/reset-admin buttons now trigger the same email flow; bishop never sees a code. Code never echoes to the browser. **Action: set `RESEND_API_KEY` and `RESEND_FROM` Supabase secrets** for delivery; without them the function still hashes and stores correctly but the email send is a no-op (audited as `delivered:false`). |
-| SEC-5 | JWT-verify all edge functions, lock CORS to production origin | — | **DONE 2026-05-13** | All 4 legacy fns (kgfcm-ai-proxy, kgfcm-push-send, kgfcm-push-notify, kgfcm-checkin-remind) redeployed with `verify_jwt: true` and the shared CORS module. Unauthenticated calls now rejected by Supabase's edge runtime before our code runs. kgfcm-push-send accepts service_role (server-to-server) or bishop/admin JWT only; rejects pastor JWT with audit log. kgfcm-ai-proxy rate-limits per user via rf_reset_attempts. Login/register kept `verify_jwt: false` (PIN flow has no JWT yet) but do their own rate-limit + constant-time. Lock CORS to production by setting `ALLOWED_ORIGINS` Supabase env var to the Vercel domain. |
+| SEC-5 | JWT-verify all edge functions, lock CORS to production origin | — | **DONE 2026-05-13** | All 4 legacy fns (kgfcm-ai-proxy, kgfcm-push-send, kgfcm-push-notify, kgfcm-checkin-remind) redeployed with `verify_jwt: true` and the shared CORS module. Unauthenticated calls now rejected by Supabase's edge runtime before our code runs. kgfcm-push-send accepts service_role (server-to-server) or bishop/admin JWT only; rejects pastor JWT with audit log. kgfcm-ai-proxy rate-limits per user via rf_reset_attempts. Login/register kept `verify_jwt: false` (PIN flow has no JWT yet) but do their own rate-limit + constant-time. Lock CORS to production by setting `ALLOWED_ORIGINS` Supabase env var to the Vercel domain. **Done 2026-05-14 — this trailing sentence is history, not a to-do.** It reads as an open action and was misread as one on 2026-08-28; the variable is set to the apex plus `www`, verified by preflight probe. See the correction in section F. |
 | SEC-6 | Server-side audit logger via service-role edge function | — | **DONE 2026-05-13** | New kgfcm-audit edge function deployed (verify_jwt: true). Client `audit()` in HTML routes through it; actor_id/actor_role come from the verified JWT, not client claim. All 5 `console.error` calls in legacy fns replaced with `audit()`. Verified: SMOKE_TEST audit row from bishop JWT recorded `actor_role: bishop` server-derived. |
 | SEC-7 | Add CSP header in vercel.json | — | **DONE 2026-05-13** | Strict CSP with default-src 'self', script-src 'self' 'unsafe-inline' (HTML has inline scripts + onclick handlers), style-src + font-src for Google Fonts, img-src + connect-src locked to the project's Supabase domain, frame-ancestors 'none', upgrade-insecure-requests. Plus HSTS (Strict-Transport-Security: max-age=63072000 includeSubDomains preload). |
 | SEC-8 | Remove redundant long-lived anon JWT from HTML | — | **DONE 2026-05-13** | Legacy `supabaseAnonKey` removed from kg-pastoral-network.html config block; `supabaseKey` getter + `SB_API_KEY` simplified to publishable key only. One fewer long-lived secret in the bundle. |
