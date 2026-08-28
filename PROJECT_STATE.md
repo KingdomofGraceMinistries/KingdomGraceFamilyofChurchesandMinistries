@@ -161,9 +161,17 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   Files table below lists it, and `content-scan.sh` exempts it by name. That
   boundary is live, not theoretical — the account-level Supabase connector sees
   only the WellFit project.
-- **Two memory files cited by every guard violation message do not exist** —
-  `memory/feedback_no_demo_grade_code.md` and `memory/feedback_audit_logger_only.md`.
-  The hooks fire correct blocks that point at nothing.
+- ~~Two memory files cited by every guard violation message do not exist.~~
+  **Written 2026-08-28.** `feedback_no_demo_grade_code.md` documents the five
+  hard-blocked patterns and why each was banned (all five were shipped here
+  once and remediated under SEC-1…SEC-16); `feedback_audit_logger_only.md`
+  documents both `audit()` signatures — client `audit(eventType, meta)` and
+  edge `audit(supa, eventType, meta)` — and why `console.*` is refused. Both
+  live **in the repo** at `memory/`, which is where the hook messages already
+  pointed (`See memory/feedback_no_demo_grade_code.md`) and means a human
+  contributor who trips the guard can actually read them. They are covered by
+  the scanner's `*/memory/*` exemption, which they need: they quote the banned
+  strings verbatim.
 - Carried forward unchanged: `SB_SECRET_KEY` holds a publishable key,
   the `pg_net` cron auth redesign, and the A1/A2 white-label work. See the
   NEXT UP section and `REFORMATION_ROADMAP.md` I1.
