@@ -1,5 +1,10 @@
 // Lock CORS to the allowed origins from the ALLOWED_ORIGINS env var
 // (comma-separated). Edge functions reject other origins.
+//
+// This gate fails closed: if ALLOWED_ORIGINS is unset, empty or mistyped,
+// every origin is rejected. Do not add a permissive fallback for that case —
+// one existed here until 2026-08-31 and would have silently disabled the
+// origin check on all twelve functions the moment the variable was cleared.
 
 const ALLOWED = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",")
@@ -18,12 +23,6 @@ export function corsHeaders(req: Request): Record<string, string> {
 }
 
 export function isOriginAllowed(req: Request): boolean {
-  // Cutover behavior: when ALLOWED_ORIGINS env var is not set yet, accept
-  // any origin so the migration window doesn't lock out the live app.
-  // Production MUST set ALLOWED_ORIGINS to the canonical Vercel domain — at
-  // that point this branch starts rejecting other origins. Tracked in
-  // PROJECT_STATE.md SEC-5.
-  if (ALLOWED.length === 0) return true;
   const origin = req.headers.get("origin") ?? "";
   return ALLOWED.includes(origin);
 }

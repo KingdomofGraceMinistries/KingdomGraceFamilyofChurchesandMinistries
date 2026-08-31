@@ -175,12 +175,21 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   for an unallowed origin, and the browser would reject the ACAO mismatch
   regardless.
 
-  **What remains is genuinely small.** Because `ALLOWED` is non-empty, the
-  `if (ALLOWED.length === 0) return true` branch at `_shared/cors.ts:22` never
-  executes — it is dead code in this deployment, not a live gap. It should
-  still be deleted: it silently disables the origin gate on every function the
-  moment the variable is cleared or mistyped, which is the opposite of how a
-  security control should fail. Low priority, no urgency.
+  ~~**What remains is genuinely small** — the `if (ALLOWED.length === 0)
+  return true` fail-open branch in `_shared/cors.ts`.~~ **Deleted 2026-08-31.**
+  It was dead code in this deployment (`ALLOWED` is non-empty), so runtime
+  behaviour is byte-identical — but it silently disabled the origin gate on
+  every function the moment the variable was cleared or mistyped, which is the
+  opposite of how a security control should fail. `isOriginAllowed()` now fails
+  closed, and the header comment on the file says so and says not to re-add a
+  permissive fallback. `deno check` passes.
+
+  **This needs a redeploy to take effect.** `_shared/cors.ts` is compiled into
+  each function at deploy time, so all twelve call sites keep running the old
+  module until they are redeployed. No urgency — the deployed behaviour is
+  already correct while `ALLOWED_ORIGINS` is set. Deploy without
+  `--no-verify-jwt`; see section I on how a redeploy of one function last time
+  took all twelve with it.
 - **Four stale `--no-verify-jwt` instructions** remain, all in the superseded
   handoff sections of this file. They contradict the live deployment, where
   `kgfcm-ai-proxy` runs `verify_jwt: true`. The fifth, in
@@ -199,8 +208,11 @@ Project `kseocbwhuveieqhayske`, ACTIVE_HEALTHY, Postgres 17.6.1.104, us-east-2.
   substantive commit — as part of the initial `CLAUDE.md` scaffold, which also
   reproduces `claude-code-frequent-mistakes.md` verbatim. The operator
   confirmed they do not recognise the terms as describing this project.
-  Recommended: delete that bullet list from `CLAUDE.md` and point it at
-  `governance-boundaries.md`.
+  **That bullet list was deleted from `CLAUDE.md` on 2026-08-31.** Its
+  Governance Boundaries section now states that Kingdom Grace is standalone,
+  lists what `governance-boundaries.md` actually covers, and records that the
+  System A/B language was scaffold carry-over — so a future session reads the
+  correction rather than the phantom map.
 
   **The first draft of that file got this wrong and had to be rewritten.** An
   unrelated project appeared in `list_projects` because the Supabase connector

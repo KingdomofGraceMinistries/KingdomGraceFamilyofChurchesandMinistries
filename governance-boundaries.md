@@ -1,6 +1,6 @@
 # Governance Boundaries
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-31
 **Scope:** Kingdom Grace Pastoral Network only.
 
 `CLAUDE.md` has referenced this file since the repo's first commit, promising a
@@ -113,12 +113,13 @@ Evidence:
 - The operator confirmed on 2026-08-28 that they do not recognise the terms as
   describing this project.
 
-**Recommended:** delete the "Governance Boundaries" bullet list from
-`CLAUDE.md` and point it at this file instead. A boundary map for systems this
-app has no relationship with costs a future session real time chasing a
-phantom — which is exactly what happened on 2026-08-28, when an unrelated
-project appearing in a misconfigured connector was mistaken for one side of
-that map and written up as a boundary before the operator corrected it.
+**Done 2026-08-31:** that bullet list was deleted from `CLAUDE.md`, whose
+Governance Boundaries section now states Kingdom Grace is standalone, points
+here, and records the carry-over so it is not reintroduced. A boundary map for
+systems this app has no relationship with costs a future session real time
+chasing a phantom — which is exactly what happened on 2026-08-28, when an
+unrelated project appearing in a misconfigured connector was mistaken for one
+side of that map and written up as a boundary before the operator corrected it.
 
 ---
 

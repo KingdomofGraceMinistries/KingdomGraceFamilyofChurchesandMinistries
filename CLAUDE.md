@@ -303,12 +303,27 @@ The app is ~1,800 lines. When editing:
 
 ## Governance Boundaries
 
-See `governance-boundaries.md` for the full architectural boundary map covering:
-- System A (WellFit) vs System B (Envision Atlus) separation
-- Shared Spine services
-- Cross-system read paths
-- Data ownership rules
-- Refactor guardrails
+**Kingdom Grace is a standalone system** — no upstream, no downstream, no
+sibling. One Supabase project, one Vercel team, one domain, one AI proxy, one
+mail sender. It is the system of record for everything it holds.
+
+See `governance-boundaries.md` for the full map:
+- What the system depends on, and data ownership
+- Confirm the connector target before any write — an unexpected project in a
+  connector listing is a misconfiguration, never a discovery (§2.1)
+- No credential may span systems (§2.2)
+- Migrations are CLI-only, never through the MCP connector (§2.3)
+- Refactor guardrails — don't extract shared code toward another project,
+  don't rename to another system's conventions, keep the single-file frontend
+- The test pastor account is deliberate — do not remove it (§4)
+
+Earlier versions of this section promised a map of "System A (WellFit) vs
+System B (Envision Atlus)" separation and "Shared Spine" services. Both belong
+to the operator's other work and **neither describes this codebase** — that
+language was scaffold carry-over in the repo's first substantive commit,
+referenced by nothing. It cost a session real time on 2026-08-28 when an
+unrelated project surfaced by a misconfigured connector was mistaken for one
+side of that phantom boundary. See `governance-boundaries.md` §3.
 
 ---
 ---
