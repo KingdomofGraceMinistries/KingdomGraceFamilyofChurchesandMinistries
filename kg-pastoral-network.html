@@ -1424,6 +1424,10 @@ async function submitPin(){
     if(session.role === 'bishop' || session.role === 'admin'){
       launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
     } else {
+      // Signing in as a pastor must clear any dashboard left over from an
+      // earlier user on this page load — see clearDashboardChrome(). Sign-out
+      // already does it, but a session can also change hands without one.
+      clearDashboardChrome();
       go('s-home'); initNotifPolling();
     }
   } catch(e){
@@ -1573,8 +1577,7 @@ async function logout(){
   await signOutSession();
   ST.profile=null;
   if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; }
-  $('bishop-app').className='';
-  $('app').style.display='';
+  clearDashboardChrome();
   go('s-login');
 }
 
@@ -2944,6 +2947,7 @@ async function confirmPinReset(){
         if(session.role === 'bishop' || session.role === 'admin'){
           launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
         } else {
+          clearDashboardChrome();
           go('s-home'); initNotifPolling();
         }
       }, 1200);
@@ -3265,6 +3269,31 @@ function bishopBackToDashboard(){
   $('bishop-app').className='active';
   applyTheme();
 }
+
+// Tear down every trace of a dashboard session. Two things outlive a sign-out
+// otherwise, and together they let a pastor reach the previous user's
+// dashboard on a shared device without any query being re-run:
+//
+//   1. The `.bishop-only` "View Dashboard" button ships with an inline
+//      display:none, but bishopViewApp() clears that inline style to reveal
+//      it, and no CSS rule backs the class — so once revealed it stays
+//      revealed. Nothing re-hid it on sign-out.
+//   2. #bishop-app keeps the HTML the last dashboard render produced.
+//      bishopBackToDashboard() only flips visibility; it never calls
+//      renderBishopDashboard(). So the panels still hold that session's
+//      pastor names, burnout scores and — if the Prayer Wall was opened —
+//      prayer requests.
+//
+// RLS still refuses fresh reads to a pastor JWT, which is why this never
+// showed up as a data leak in the policies. Already-rendered DOM needs no
+// query. A page reload cleared it; signing out must too.
+function clearDashboardChrome(){
+  document.querySelectorAll('.bishop-only').forEach(el=>el.style.display='none');
+  const ba=$('bishop-app');
+  if(ba){ ba.className=''; ba.innerHTML=''; }
+  const app=$('app'); if(app) app.style.display='';
+}
+
 function isBishop(){ return ST.session?.role==='bishop'; }
 function isAdmin(){ return ST.session?.role==='admin'; }
 function isDashboardUser(){ return isBishop()||isAdmin(); }
