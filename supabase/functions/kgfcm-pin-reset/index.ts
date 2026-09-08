@@ -27,6 +27,10 @@ const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const RESEND_API_KEY   = Deno.env.get("RESEND_API_KEY")            ?? "";
 const RESEND_FROM      = Deno.env.get("RESEND_FROM")               ?? "Kingdom Grace <noreply@kingdomgracefamily.com>";
+// See the note in kgfcm-admin-pin-issue: the From address cannot receive
+// replies and must stay on the Resend-verified domain, so the reachable
+// mailbox goes on reply_to instead.
+const RESEND_REPLY_TO  = Deno.env.get("RESEND_REPLY_TO")           ?? "kgfcm2023@gmail.com";
 const NETWORK_SHORT    = Deno.env.get("NETWORK_SHORT")             ?? "Kingdom Grace";
 const MIN_RESPONSE_MS  = 600;
 const EMAIL_RE         = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -145,7 +149,7 @@ async function sendResetEmail(to: string, code: string): Promise<{ ok: boolean; 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({ from: RESEND_FROM, to, subject, text, html }),
+    body: JSON.stringify({ from: RESEND_FROM, to, reply_to: RESEND_REPLY_TO, subject, text, html }),
   });
   let id: string | undefined;
   let error: string | undefined;

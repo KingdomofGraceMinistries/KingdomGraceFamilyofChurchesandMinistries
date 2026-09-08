@@ -55,6 +55,16 @@ const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const RESEND_API_KEY   = Deno.env.get("RESEND_API_KEY")            ?? "";
 const RESEND_FROM      = Deno.env.get("RESEND_FROM")               ?? "Kingdom Grace <noreply@kingdomgracefamily.com>";
+// Where a reply actually goes. The From address is a Resend sending identity on
+// a domain with no MX record, so a reply to it reaches nobody and does not even
+// bounce — the person most likely to reply is a pastor already stuck at the
+// door, and nobody learns they tried. Do NOT fix that by pointing RESEND_FROM
+// at a mailbox: Resend only sends from a domain verified against the API key,
+// and an unverified From fails the send outright (seen 2026-05-13, HTTP 400
+// "The associated domain with your API key is not verified"). reply_to carries
+// no such restriction, so the From stays verified and DKIM/SPF/DMARC alignment
+// is untouched.
+const RESEND_REPLY_TO  = Deno.env.get("RESEND_REPLY_TO")           ?? "kgfcm2023@gmail.com";
 const NETWORK_SHORT    = Deno.env.get("NETWORK_SHORT")             ?? "Kingdom Grace";
 const MIN_RESPONSE_MS  = 600;
 
@@ -128,7 +138,14 @@ Deno.serve(async (req: Request) => {
       await padTo(started, MIN_RESPONSE_MS);
       return jsonResponse(req, { error: targetTable === "rf_admins" ? "Admin not found" : "Pastor not found" }, 404);
     }
-    const admin = target.data as { id: string; full_name?: string; email?: string; status?: string; is_bishop?: boolean };
+    // Cast through unknown: the select above is a ternary, so supabase-js gets
+    // a union of two literals where it expects one and its row-type parser
+    // resolves to ParserError, which does not overlap the asserted shape.
+    // `deno check` flagged it TS2352 and named this as the fix. CI runs
+    // `deno lint` and `deno test --no-check`, never `deno check`, which is why
+    // it never went red. Runtime is unchanged — the shape is still asserted,
+    // and `is_bishop` is absent for rf_pastors, which the optional marks.
+    const admin = target.data as unknown as { id: string; full_name?: string; email?: string; status?: string; is_bishop?: boolean };
     if (!admin.email) {
       await padTo(started, MIN_RESPONSE_MS);
       return jsonResponse(req, { error: "That person has no email address on file." }, 400);
@@ -258,7 +275,7 @@ async function sendPinEmail(to: string, name: string, pin: string, isAdmin: bool
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
-    body: JSON.stringify({ from: RESEND_FROM, to, subject, text, html }),
+    body: JSON.stringify({ from: RESEND_FROM, to, reply_to: RESEND_REPLY_TO, subject, text, html }),
   });
   let id: string | undefined;
   let error: string | undefined;
