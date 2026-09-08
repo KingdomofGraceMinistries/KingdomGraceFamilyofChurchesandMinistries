@@ -119,13 +119,81 @@ secret** rather than logging in again each time.
 
 The bishop's in-app guide (section 2) was rewritten to cover both.
 
-### G. Left open
+### G. The dashboard survived sign-out — a DOM leak RLS could not catch
 
-- **A test pastor row may still be live.** `Handoff Test Pastor` /
-  `accountabletechnology@envisionvirtualedge.org` was created to prove the
-  flow and **should be deleted once handoff is confirmed.** It is distinct
-  from the deliberate `maria@thewellfitcommunity.org` account, which stays
-  (2026-08-28 §F).
+Reported as "my pastor email and PIN give me access to bishop's login."
+Two separate things were behind it; this one is the real defect.
+
+**A pastor signing in on a device a bishop or admin had used could reach the
+previous user's dashboard, with no query re-run.** Two leftovers combined:
+
+1. The `.bishop-only` "View Dashboard" button ships with an inline
+   `display:none`, but `bishopViewApp()` reveals it by *clearing that inline
+   style* — and **no CSS rule backs the class.** Once revealed it stayed
+   revealed. `logout()` reset `#bishop-app` and `#app` but never re-hid it,
+   so the gold button sat in the pastor's top nav.
+2. `bishopBackToDashboard()` only flips visibility — it never calls
+   `renderBishopDashboard()`. `#bishop-app` still held the HTML the previous
+   render produced: pastor names, burnout scores, and prayer requests if that
+   panel had been opened. `logout()` never cleared it.
+
+**RLS was working correctly throughout and is not the gap.** Verified with
+the test pastor's own JWT: `is_bishop()` false, and 0 rows from `rf_admins`,
+`rf_checkins` and `rf_direct_messages`. That is exactly why this was
+invisible to a policy audit — **already-rendered DOM needs no query.** Any
+future review of "can role X see Y" has to consider rendered state, not just
+the policies.
+
+A page reload always cleared both, which is why it stayed hidden: the
+exposure window is a sign-out and sign-in **within one page load** — which is
+what handing someone a phone looks like.
+
+Fixed by `clearDashboardChrome()`, called from `logout()` and from both
+non-dashboard sign-in paths (`submitPin` and the reset-confirm auto
+sign-in), since a session can change hands without a sign-out. Boot paths
+need no call — a fresh load rebuilds the DOM from markup.
+
+### H. The three access buttons are now real gates
+
+The second half of the same report, and **not** a security hole. Tapping
+"Bishop Access" and entering a pastor's credentials signed that pastor in:
+`submitPin()` set `ST.pinTarget` from the button and then ignored it, letting
+the server decide the role and routing on the answer. The audit log recorded
+`actor_role: pastor` every time and RLS held — but it *reads* as the
+bishop's door opening for a pastor PIN, which is how it was reported.
+
+A credential now opens only the door matching its role. **This is a UI
+promise, not a privilege boundary** — the server still decides and RLS still
+enforces, so the gate can never grant anything. What it stops is the app
+claiming three doors while running one.
+
+The refusal **revokes** rather than declining to navigate: `signInWithPin()`
+has already called `applySession()`, so a real session is in localStorage by
+the time the mismatch is known, and the next page load would sign them
+straight in. `signOutSession()` hits `/auth/v1/logout` and clears local
+state. The `LOGIN_WRONG_DOOR` audit is awaited *before* that, since revoking
+first can lose the record it authenticates with.
+
+Verified no existing account is locked out — each resolves to exactly one
+reachable door: bishop via config → Bishop Access, `ladyofpraize@` → Admin
+Access, pastors → Pastor Login. **Note for the bishop:** tapping "Pastor
+Login" out of habit will now refuse him and name the right button.
+
+### I. Left open
+
+- ~~A test pastor row may still be live.~~ **Deleted 2026-09-08.**
+  `Handoff Test Pastor` / `accountabletechnology@envisionvirtualedge.org` —
+  profile row, `auth.users` row and its push subscription all removed; its
+  **7 audit rows were deliberately kept** as the record of the test. The
+  deliberate `maria@thewellfitcommunity.org` account stays (2026-08-28 §F);
+  `rf_pastors` is back to 1 row.
+- **A fresh PIN was issued to `ladyofpraize@hotmail.com` on 2026-09-08**
+  at the operator's request (Resend `200`, id
+  `d0737365-1457-494b-9f70-c0cf6c882e4b`). **Her previous PIN is dead.** She
+  was never de-provisioned — active, bcrypt PIN, auth-linked, and signing in
+  since 2026-08-14. An admin reporting trouble has lost a PIN, not lost
+  provisioning; check Hotmail's junk folder before re-sending, since
+  re-issuing invalidates the PIN already in flight.
 - **`RESEND_FROM` is still unset** — §H1 below, and it is now demonstrably
   user-facing: every PIN emailed today came from
   `noreply@kingdomgracefamily.com`, a domain with no MX record. A pastor who
