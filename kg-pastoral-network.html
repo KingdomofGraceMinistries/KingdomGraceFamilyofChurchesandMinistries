@@ -632,6 +632,11 @@ const loadLocal = k => { try{return JSON.parse(localStorage.getItem(C.appId+'_'+
 // the tenant has configured in their themes JSON. Login screens always show the default theme.
 const THEME_KEY = 'kgfcm_theme';
 const AUTH_SCREENS = ['s-login','s-pin','s-forgot-pin','s-register'];
+
+// The three sign-in doors, keyed by the role each one admits. Used both to
+// title the PIN screen and to name the door in submitPin()'s mismatch message,
+// so the wording a user is refused with always matches the button they tapped.
+const DOOR_LABEL = { bishop:'Bishop Access', admin:'Admin Access', pastor:'Pastor Login' };
 function getThemeId(){
   return localStorage.getItem(THEME_KEY) || C.themes?.default || 'dark';
 }
@@ -1412,6 +1417,25 @@ async function submitPin(){
   }
   try {
     const session = await signInWithPin(email, pin);
+    // The three access buttons are gates, not labels. A credential opens only
+    // the door that matches its role: a pastor PIN entered under "Bishop
+    // Access" is refused rather than quietly signing them in as a pastor,
+    // which reads as the bishop's door having opened for them.
+    //
+    // This is a UI promise, not a privilege boundary — the server decides the
+    // role and RLS enforces it, so this can never grant access. But
+    // signInWithPin() has already stored a real session by this point, so a
+    // mismatch has to REVOKE it, not merely decline to navigate. Leaving the
+    // token in localStorage would sign them in on the next page load.
+    const door = ST.pinTarget || session.role;
+    if(session.role !== door){
+      // Awaited deliberately: signOutSession() revokes the token this audit
+      // POST authenticates with, so firing and forgetting can lose the record.
+      await audit('LOGIN_WRONG_DOOR', { attempted_door: door, actual_role: session.role });
+      await signOutSession();
+      showErr('pin-err', `Those credentials are not for ${DOOR_LABEL[door]}. Go back and choose ${DOOR_LABEL[session.role] || 'the correct option'}.`);
+      return;
+    }
     localStorage.setItem(LAST_EMAIL_KEY, email);
     // Pastor profile load — bishop/admin dashboards fetch their own data on render.
     if(session.role === 'pastor' && session.profile_id){
@@ -3018,7 +3042,7 @@ function showPinLogin(role){
     if(role==='bishop') mark.innerHTML=MITRE;
     else mark.textContent=role==='admin'?'🔧':'🔢';
   }
-  if(title) title.textContent=role==='bishop'?'Bishop Access':role==='admin'?'Admin Access':'Pastor Login';
+  if(title) title.textContent=DOOR_LABEL[role];
   if(sub) sub.textContent=role==='bishop'?'Enter your email + master PIN':role==='admin'?'Enter your admin email + PIN':'Enter your email + 6-digit PIN';
   // Pre-fill the email field with the last successfully-used email on this device
   // so returning users only type the PIN.
