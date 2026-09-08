@@ -2954,6 +2954,27 @@ async function confirmPinReset(){
   } catch(e){ showErr('reset-err', e.message || 'Invalid or expired reset code.'); }
 }
 
+// Mint a working 6-digit PIN and email it to the target. Body is exactly one of
+// { admin_id } or { pastor_id }. The PIN is generated and bcrypted inside the
+// edge function and returned to nobody — it is not in the response, the audit
+// log, or any screen, so no operator ever holds it. Sent with the caller's
+// session token rather than callEdgeFn(), which uses the publishable key and
+// would arrive as anon. Resolves to { sent, email }; throws on failure.
+async function emailPinTo(body){
+  const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'apikey':SB_API_KEY(),
+      'Authorization':'Bearer '+ST.session.access_token,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
+  return data;
+}
+
 async function bishopResetPastorPin(pastorId){
   // Email the pastor a working 6-digit PIN rather than a code they must trade
   // for a PIN of their own. Same low-friction path the Admins tab uses: the
@@ -2961,17 +2982,7 @@ async function bishopResetPastorPin(pastorId){
   // nobody, so it reaches the pastor's inbox and nowhere else.
   if(!confirm('Email this pastor a new 6-digit PIN?\n\nTheir current PIN stops working immediately, and any reset code already sent to them is cancelled.')) return;
   try {
-    const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'apikey':SB_API_KEY(),
-        'Authorization':'Bearer '+ST.session.access_token,
-      },
-      body: JSON.stringify({ pastor_id: pastorId }),
-    });
-    const data = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
+    const data = await emailPinTo({ pastor_id: pastorId });
     audit('BISHOP_PIN_ISSUED',{table:'rf_pastors', targetId:pastorId});
     alert(`A 6-digit PIN has been emailed to ${data.email}.\n\nThey sign in with that email address and the PIN. You do not need to see it — ask them to check their inbox.`);
   } catch(e){ alert(e.message || 'Could not send the PIN.'); }
@@ -3957,8 +3968,19 @@ async function loadBishopInvites(){
   const panel=$('bp-invites'); if(!panel) return;
   panel.innerHTML=`
     <div class="b-drill" style="max-width:500px;margin-bottom:20px">
-      <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Invite a Pastor</div>
-      <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">Enter their name, then send them the link via text message.</div>
+      <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Add a Pastor</div>
+      <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">If you have their email address, this is the quickest way. They are added to the network and emailed a 6-digit PIN that works straight away — nothing for them to set up.</div>
+      <label class="flbl">Pastor's Full Name</label>
+      <input class="fin" id="np-name" placeholder="First and Last name">
+      <label class="flbl">Email Address</label>
+      <input class="fin" id="np-email" type="email" placeholder="pastor@church.org">
+      <div class="err" id="np-err"></div>
+      <div class="ok-msg" id="np-ok"></div>
+      <button class="fsub" id="np-btn" onclick="addPastorByEmail()" style="padding:12px;font-size:13px">Add Pastor &amp; Email PIN →</button>
+    </div>
+    <div class="b-drill" style="max-width:500px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Or send a share link</div>
+      <div style="font-size:12px;color:var(--mist);margin-bottom:14px;line-height:1.5">For a pastor you only have a phone number for. They tap the link, enter their own details, and choose their own PIN.</div>
       <label class="flbl">Pastor's Full Name</label>
       <input class="fin" id="inv-name" placeholder="First and Last name">
       <div class="err" id="inv-err"></div>
@@ -3982,6 +4004,52 @@ async function loadBishopInvites(){
       </tr>`).join('')}</tbody>
     </table>`:'<div class="empty">No invitations sent yet.</div>';
   } catch(e){$('inv-list').innerHTML='<div class="empty">Could not load invites.</div>';}
+}
+
+// Add a pastor the bishop has an email address for, then email them a working
+// PIN. Two server calls, deliberately kept separate:
+//
+//   create_pastor  — SECURITY DEFINER RPC. INSERT on rf_pastors is service_role
+//                    only at the GRANT layer, so the row cannot be created from
+//                    here directly. The RPC takes NO pin parameter.
+//   emailPinTo     — mints a CSPRNG 6-digit PIN, bcrypts it and emails it. The
+//                    plaintext never enters this browser, so unlike the Admins
+//                    tab there is no credential on screen to read out or leak.
+//
+// If the row is created but the email fails, the pastor exists with no PIN and
+// cannot sign in. That is said plainly rather than papered over — they appear in
+// the Overview immediately, where "Reset PIN" re-sends.
+async function addPastorByEmail(){
+  const name=$('np-name')?.value.trim();
+  const email=($('np-email')?.value || '').trim().toLowerCase();
+  if(!name){showErr('np-err','Please enter the pastor\'s name.');return;}
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)){showErr('np-err','Please enter a valid email address.');return;}
+  const btn=$('np-btn'); btn.disabled=true; btn.textContent='Adding...';
+  try {
+    const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/create_pastor`,{
+      method:'POST', headers:SB_HDR(),
+      body:JSON.stringify({p_email:email, p_name:name}),
+    });
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err.message || 'Could not add this pastor.');
+    }
+    const pastorId=await r.json();
+    audit('PASTOR_ADDED',{table:'rf_pastors', targetId:pastorId});
+    hideErr('np-err');
+    // The cached list is now stale, and the Overview prefers the cache.
+    ST.allPastors=[];
+    try {
+      await emailPinTo({ pastor_id: pastorId });
+      audit('BISHOP_PIN_ISSUED',{table:'rf_pastors', targetId:pastorId});
+      $('np-name').value=''; $('np-email').value='';
+      showOk('np-ok', name+' has been added, and a 6-digit PIN is on its way to '+email+'. Ask them to check their inbox — they sign in with that email and the PIN. You do not need to see it.');
+    } catch(mailErr){
+      showErr('np-err', name+' was added, but the PIN email to '+email+' did not go out ('+(mailErr.message||'send failed')+'). They cannot sign in yet. Open them from the Overview tab and tap "Reset PIN" to send it again.');
+    }
+    loadBishopInvites();
+  } catch(e){ showErr('np-err', e.message || 'Could not add this pastor.'); }
+  btn.disabled=false; btn.textContent='Add Pastor & Email PIN →';
 }
 
 async function sendBishopInvite(){
@@ -4113,16 +4181,19 @@ function loadHelp(){
         <p>You'll be taken to the dashboard. Admins see everything the Bishop sees <strong>except</strong> private prayer requests.</p>
       `)}
 
-      ${helpSection('2','Inviting a Pastor','Add someone to your network in 30 seconds',`
-        <p><strong>Step 1:</strong> Go to the <strong>Invites</strong> tab.</p>
-        <p><strong>Step 2:</strong> Type the pastor's <strong>full name</strong> and tap <strong>"Create Invite."</strong></p>
-        <p><strong>Step 3:</strong> Three buttons appear:</p>
+      ${helpSection('2','Adding a Pastor','Two ways, depending on what you have for them',`
+        <p>Both live on the <strong>Invites</strong> tab. Use the first one whenever you have the pastor's email address.</p>
+        <p><strong style="color:var(--gold)">If you have their email — "Add a Pastor"</strong></p>
+        <p>Type their <strong>full name</strong> and <strong>email address</strong>, then tap <strong>"Add Pastor &amp; Email PIN."</strong> They are added to the network straight away and emailed a 6-digit PIN that already works. They sign in with that email and that PIN — there is nothing for them to set up, and nothing for you to read out to them.</p>
+        <p>You never see the PIN, and neither does anyone else. It is created inside the server and goes only to their inbox. If they lose it, open them from the <strong>Overview</strong> tab and tap <strong>"Reset PIN"</strong> to send a fresh one.</p>
+        <p><strong style="color:var(--sky)">If you only have a phone number — "Or send a share link"</strong></p>
+        <p>Type their <strong>full name</strong> and tap <strong>"Create Invite."</strong> Three buttons appear:</p>
         <ul>
           <li><strong>Send via Text</strong> — opens your phone's text message app with the invite link ready to send</li>
           <li><strong>Share Link</strong> — opens your share menu (WhatsApp, email, etc.)</li>
           <li><strong>Copy Link</strong> — copies the link so you can paste it anywhere</li>
         </ul>
-        <p>When the pastor taps the link, they enter their name, email, and choose a PIN. That's it — they're in.</p>
+        <p>When the pastor taps the link, they enter their name, email, and choose their own PIN. That's it — they're in.</p>
       `)}
 
       ${isBishop()?helpSection('3','Adding an Admin','Give someone access to help manage the network',`
@@ -4271,25 +4342,13 @@ async function unlockAdmin(id,btn){
   } catch(e){ btn.textContent='Error — retry'; }
 }
 
-// Issue a working 6-digit PIN and email it straight to the admin. The PIN is
-// generated and bcrypted inside the edge function and returned to nobody — it
-// is not in the response, the audit log, or this screen, so the bishop never
-// has to read a credential aloud. Sent with the bishop's session token rather
-// than callEdgeFn(), which uses the publishable key and would arrive as anon.
+// Issue a working 6-digit PIN and email it straight to the admin, so the bishop
+// never has to read a credential aloud. See emailPinTo() for why the PIN reaches
+// nobody but the recipient's inbox.
 async function bishopIssueAdminPin(adminId){
   if(!confirm('Email a new 6-digit PIN to this admin?\n\nTheir current PIN stops working immediately, and any reset code already sent to them is cancelled.')) return;
   try {
-    const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'apikey':SB_API_KEY(),
-        'Authorization':'Bearer '+ST.session.access_token,
-      },
-      body: JSON.stringify({ admin_id: adminId }),
-    });
-    const data = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
+    const data = await emailPinTo({ admin_id: adminId });
     audit('ADMIN_PIN_ISSUE_REQUESTED',{table:'rf_admins', targetId:adminId});
     alert(`A 6-digit PIN has been emailed to ${data.email}.\n\nThey sign in with that email address and the PIN. You do not need to see it — ask them to check their inbox.`);
   } catch(e){ alert(e.message || 'Could not send the PIN.'); }

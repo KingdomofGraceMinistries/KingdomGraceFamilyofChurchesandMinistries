@@ -9,3 +9,11 @@ deno.lock
 # Editor and either clear the file or leave it; it won't reach git.
 supabase/scratch/
 
+# Operator credentials for the Supabase CLI — never commit. Holds the
+# personal access token (and/or database password) used to run migrations
+# from this machine. Every variant is listed rather than a bare `.env` glob
+# so a stray `.env.production` cannot slip through.
+.env
+.env.*
+!.env.example
+
