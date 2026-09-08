@@ -258,6 +258,55 @@ Runtime unchanged. **It stayed hidden because CI runs `deno lint` and
 `deno test --no-check`, never `deno check`** — type errors in edge functions
 do not fail the build. Worth closing in `ci.yml`.
 
+### K. Deprecation sweep — Rule 8 list is clean; two real finds
+
+Swept `kg-pastoral-network.html`, `sw.js`, `manifest.json`, `vercel.json` and
+all twelve edge functions. **Every pattern on Rule 8's explicit list is
+absent** — no `apple-mobile-web-app-capable` (the meta tag is the modern
+`mobile-web-app-capable`), no `keyCode` or `event.which`, no
+`webkitAudioContext`/`webkitURL`, no `unload` listener, no `document.write`,
+no `execCommand`, no mutation events or `attachEvent`, no `substr`,
+`escape`, `new Buffer`, `getYear`, `navigator.platform` or `document.all`.
+`manifest.json` carries no deprecated fields.
+
+**K1 — `config.toml` `[inbucket]` → `[local_smtp]`.** The CLI printed a
+deprecation warning on *every* command. Keys are unchanged; verified by
+running `supabase init` with the same CLI version that emits the warning and
+diffing what it generates. **The public config reference still documents
+`[inbucket]` and never mentions `[local_smtp]` — the CLI is ahead of its own
+docs, so the generated file is the authority, not the page.** Local
+development only; production email is Resend from the edge functions. All
+twelve `[functions.*]` `verify_jwt` declarations re-verified intact
+afterwards, since that map is what stops a deploy locking every pastor out.
+
+**K2 — a dead IE guard was hiding a live iPad bug.** `IS_IOS` read
+`/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream`. The
+`MSStream` clause was an IE11-era guard against engines that spoofed iPhone
+in the UA; IE retired June 2022, so it could only ever evaluate true.
+Removing it exposed the real defect: **iPadOS 13+ defaults to desktop-class
+browsing and reports as "Macintosh", so `/iPad/` has not matched a real iPad
+in years.**
+
+That matters more than it looks. `IS_IOS` gates `showIosInstallHint()`, the
+only thing telling an iOS user that push notifications require installing to
+the Home Screen — `PushManager` does not exist in an iOS Safari tab at all.
+iPad pastors got a silent no-op instead of the instructions, *and*
+`PUSH_SUBSCRIBE_FAILED` recorded `ios:false` for them, which would have sent
+anyone diagnosing it down the wrong path. Now also matches `Macintosh` with
+`maxTouchPoints > 1` — real Macs report 0, an iPad reports 5.
+
+**Two vendor-prefixed CSS rules were reviewed and deliberately kept.**
+Neither is deprecated; both are prefixed only because they were never
+standardised, which Rule 8 explicitly allows:
+
+- `-webkit-tap-highlight-color` — no standard equivalent exists.
+- `::-webkit-scrollbar` — the standard `scrollbar-width` offers only
+  `auto`/`thin`/`none` and cannot express the 2px and 4px widths the design
+  uses. Swapping would lose fidelity for no correctness gain.
+
+Do not "fix" these two in a later sweep without re-checking that a real
+standard equivalent has arrived.
+
 ---
 
 ## 🧭 2026-08-28 — live audit + migration ledger reconciliation
