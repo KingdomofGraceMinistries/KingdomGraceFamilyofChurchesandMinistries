@@ -5416,7 +5416,12 @@ async function pollForNotifications(){
 // only inside that standalone shell, not in a regular browser tab. Detect both
 // "iOS device" and "running standalone" so we can give pastors the right
 // guidance instead of silently failing the subscribe.
-const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+// iPadOS 13+ defaults to desktop-class browsing and reports as "Macintosh", so
+// the /iPad/ test alone never matches a modern iPad and those pastors were
+// never shown the install hint. Real Macs report maxTouchPoints 0; an iPad
+// reports 5, which is how they are told apart.
+const IS_IOS = /iPhone|iPod|iPad/.test(navigator.userAgent)
+  || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 function isStandalonePWA(){
   return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches)
