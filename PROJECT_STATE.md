@@ -1,9 +1,146 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-09-08
 **Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🧭 2026-09-08 — pastors can be added by email; owner handoff
+
+Session goal was to confirm the admin could sign in and that PINs reach
+pastors by email, ahead of handing the system to the owner.
+
+### A. Admin login was already working — nothing was broken
+
+Confirmed from the audit trail rather than assumed. On **2026-08-14**:
+`ADMIN_PIN_ISSUED` (`delivered: true`, Resend `200`) at 19:38:09, then
+`LOGIN_SUCCESS` with `actor_role: admin` at 20:01:18 — the same admin,
+23 minutes later. `rf_admins` holds Gladys Bowden-Brown
+(`ladyofpraize@hotmail.com`): active, `pin_bcrypt` set, `auth_user_id`
+linked. That link is written only by `kgfcm-pin-login`'s `ensureAuthUser`,
+so its presence is itself proof of a completed login.
+
+**If an admin reports trouble, it is a lost PIN, not provisioning.** Re-send
+with the Admins tab's **Email PIN** button. Note that adding a *new* admin
+needs the bishop's own session — `create_admin` demands
+`app_metadata.role = 'bishop'` exactly (migration `20260814190000`), and the
+Admins tab renders only for `role === 'bishop'`. Client `isBishop()` is
+correctly narrow (`kg-pastoral-network.html:3268`), so admins are not shown
+a control the server would refuse — the UI and the RPC agree.
+
+### B. The real gap — a pastor could not be added by email
+
+`INSERT on rf_pastors` is service_role-only at the GRANT layer
+(`20260513170000_real_auth.sql`, comment above the `rf_pastors` grants), so
+**no dashboard action could create a pastor.** The only path was the pastor
+opening an invite link and self-registering through `kgfcm-pin-register`,
+choosing their own PIN. And `rf_invites` held **zero rows** — the
+share-link flow had never once been used in production.
+
+`create_pastor(p_email, p_name)` closes this, added in
+`20260908162300_create_pastor_rpc.sql`. It is the pastor-side twin of
+`create_admin` with one deliberate difference: **it takes no PIN parameter.**
+The credential is minted afterwards by `kgfcm-admin-pin-issue` — CSPRNG
+6-digit PIN, bcrypted via `hash_pin`, emailed to the pastor. So unlike the
+Admins tab, no plaintext PIN ever enters the browser and the bishop has
+nothing to read aloud.
+
+Design points worth not re-litigating:
+
+- **Bishop *or* admin may call it**, matching the bar `kgfcm-admin-pin-issue`
+  already enforces for `pastor_id` targets. Admins manage pastors today;
+  requiring the bishop would remove a capability they have. Minting a fellow
+  *administrator* stays bishop-only — that is the undelegated power.
+- **Rows insert as `status='active'`, not `'pending'`.** `loadBishopOverview`
+  queries `status=eq.active`, so a pending row would be invisible to the
+  person who just created it, with no way to retry a failed send. An active
+  row with a null `pin_bcrypt` still cannot be signed into —
+  `findLoginCandidate` requires a non-null `pin_bcrypt`.
+- **The duplicate guard covers `rf_admins` too.** `findLoginCandidate` checks
+  admins first and returns on first match, so a pastor sharing an admin's
+  email would be permanently shadowed at login. Refused with a clear message
+  instead.
+
+### C. Verified against production
+
+All seven guard paths fail closed, every one refusing **before** any insert:
+
+| Caller | Result |
+|---|---|
+| `anon` | cannot execute (grant layer) |
+| no JWT / claims unset | `forbidden: only the bishop or an admin may add pastors` |
+| valid JWT, no `app_metadata.role` | `forbidden` |
+| `role = pastor` | `forbidden` |
+| `role = admin`, email already a pastor | `a pastor with that email already exists` |
+| `role = bishop`, email belongs to an admin | `that email already belongs to an admin account` |
+| `role = bishop`, blank name | `name is required` |
+
+End-to-end: PIN written as genuine bcrypt (`$2a$`, 60 chars), outstanding
+reset token cleared so an old code cannot race the new PIN, Resend `200`,
+and a test pastor **signed in successfully** with an emailed PIN. The audit
+row carried `{delivered, resend_id, send_status}` and nothing else —
+confirmed by regex that no 6-digit value appears anywhere in its metadata.
+
+**Delivery is slower than it is broken.** A PIN to Gmail appeared absent for
+several minutes and then arrived. Do not diagnose a missing PIN before
+waiting and checking spam; `p=none` DMARC on a low-volume domain invites the
+delay. Resend `200` means *accepted*, not *delivered* — the audit row's
+`resend_id` is the handle for tracing one in the Resend dashboard.
+
+### D. Migration ledger — now 25 ↔ 25
+
+`db push` applied one migration and the ledger stayed one-to-one:
+25 local files, 25 remote rows, every `local` equal to its `remote`, zero
+pending, zero remote-only. Section A of the 2026-08-28 entry records the
+24 ↔ 24 state this builds on.
+
+### E. `.env` is now the home for the CLI token
+
+`.gitignore` covered no env pattern at all, so `.env`, `.env.*` and a
+`!.env.example` negation were added, and `.env.example` committed as a
+template holding no values. Verified by staging a dummy `.env` and
+confirming git ignores it while `.env.example` stays tracked.
+
+**Codespaces rebuilds wipe `~/.supabase/access-token`.** A dashboard token
+row survives with a name like `cli_codespace@codespaces-…` but its value is
+unrecoverable — Supabase shows a PAT once, at creation. For access that
+survives rebuilds, add `SUPABASE_ACCESS_TOKEN` as a repo **Codespaces
+secret** rather than logging in again each time.
+
+### F. Onboarding now has two paths, both on the Invites tab
+
+- **Add a Pastor** — name + email, creates the row and emails a working
+  6-digit PIN. Use whenever an email address is known.
+- **Or send a share link** — name only, shareable by text. Kept unchanged for
+  pastors reachable only by phone; the pastor self-registers and picks their
+  own PIN.
+
+The bishop's in-app guide (section 2) was rewritten to cover both.
+
+### G. Left open
+
+- **A test pastor row may still be live.** `Handoff Test Pastor` /
+  `accountabletechnology@envisionvirtualedge.org` was created to prove the
+  flow and **should be deleted once handoff is confirmed.** It is distinct
+  from the deliberate `maria@thewellfitcommunity.org` account, which stays
+  (2026-08-28 §F).
+- **`RESEND_FROM` is still unset** — §H1 below, and it is now demonstrably
+  user-facing: every PIN emailed today came from
+  `noreply@kingdomgracefamily.com`, a domain with no MX record. A pastor who
+  replies for help reaches nobody, and nobody learns they tried.
+- **The twelve edge functions still read the legacy key variables**
+  (`SUPABASE_SERVICE_ROLE_KEY ?? SB_SECRET_KEY`). Raised by the operator this
+  session and confirmed against the docs: legacy `anon`/`service_role` keep
+  working **until the end of 2026**. The frontend is already on the
+  publishable key. Migrating the functions is *not* a small swap — new-style
+  keys must travel on the `apikey` header only, and any function using one
+  needs `verify_jwt = false` with authorization hand-rolled in its own code.
+  `kgfcm-admin-pin-issue` currently reads gateway-verified claims off the
+  Authorization JWT, so it would need its own signature verification. See
+  §B of the 2026-08-28 entry on how one wrong `verify_jwt` flag locks every
+  pastor out. This remains I1, deliberately not attempted on handoff day.
 
 ---
 
@@ -437,6 +574,45 @@ verified in production", so the deployment had been tracking the repo.
 `supabase/functions/*/index.ts` reports every file as different — types erased,
 `interface` blocks gone, object literals reformatted — which proves nothing.
 Compare behaviour and `verify_jwt` flags instead.
+
+**Second verification trap, worse — the MCP `get_edge_function` `files` payload
+does not show you what is deployed. Found 2026-08-31.** Asked for
+`kgfcm-checkin-remind`, it returned a `functions/_shared/cors.ts` whose body was
+the fail-closed rewrite committed in `b4b1bc4` **minutes earlier and never
+deployed** — comment included, reading "one existed here until 2026-08-31". It
+was serving repo-current source dressed as the deployed bundle.
+
+Three fields in the same connector's own `list_edge_functions` contradicted it,
+read either side of the call and identical both times: every function still at
+its 2026-08-28 version (`kgfcm-checkin-remind` v12, `kgfcm-ai-proxy` v17), every
+`updated_at` still `1788210626506`, and every `ezbr_sha256` unchanged — a
+content change moves all three. Nothing could have deployed it either:
+`.github/workflows/ci.yml` runs content-guard, Deno lint/test and JSON
+validation, and has **no deploy job**; Vercel does not deploy edge functions.
+
+This is the inverse of the `functions download` trap and more dangerous. That
+one reports false **differences**, which makes you look closer. This one reports
+false **agreement** — a session that reads `cors.ts` back through the connector
+after a deploy will see its own intended change and conclude the deploy landed,
+whether or not it did.
+
+**Rule:** never confirm a deploy by reading files back through the MCP
+connector. Confirm it by the metadata that moves — `version`, `updated_at`,
+`ezbr_sha256` — and by behaviour: `kgfcm-pin-login` 401 with padding intact,
+CORS echoing the apex and rejecting an unknown origin, `kgfcm-audit` 401
+unauthenticated, twelve `verify_jwt` flags matching the prior state.
+
+**Related: do not deploy functions through the MCP connector at all.** Beyond
+the unverifiable read path, `deploy_edge_function` takes `verify_jwt` as a
+required per-call argument, which bypasses the declared JWT map at
+`config.toml:391-425` — the SEC-5 hardening in section B. That is twelve
+hand-set flags across four `false` PIN endpoints and eight `true`; one wrong
+value either locks every pastor out of login or drops the gate on an admin
+endpoint. It also means hand-assembling each bundle — `index.ts` plus
+`_shared/cors.ts`, `_shared/audit.ts`, `_shared/rate_limit.ts` and a
+`deno.json`, which only 9 of the 12 functions carry. The CLI builds all of that
+from the repo in one command. Deploys are CLI-only, for the same reason
+migrations are (section D).
 
 ### J. `create_user: false` — the hinge of the whole auth model
 
