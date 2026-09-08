@@ -194,10 +194,16 @@ Login" out of habit will now refuse him and name the right button.
   since 2026-08-14. An admin reporting trouble has lost a PIN, not lost
   provisioning; check Hotmail's junk folder before re-sending, since
   re-issuing invalidates the PIN already in flight.
-- **`RESEND_FROM` is still unset** — §H1 below, and it is now demonstrably
-  user-facing: every PIN emailed today came from
-  `noreply@kingdomgracefamily.com`, a domain with no MX record. A pastor who
-  replies for help reaches nobody, and nobody learns they tried.
+- ~~**`RESEND_FROM` is still unset** — replies reach nobody.~~ **FIXED and
+  deployed 2026-09-08 — see §J.** `RESEND_FROM` remains unset, deliberately;
+  the fix was `reply_to`, not a new From address.
+- **`kgfcm2023@gmail.com` is now a support channel, and someone at the church
+  must watch it.** As of the §J deploy, a locked-out pastor who hits reply
+  lands in that inbox. Unmonitored, this moves the failure from replies
+  vanishing to replies sitting unread. The address belongs to the church, not
+  the developer — which is the right destination, but it does mean the
+  operator cannot confirm it is being read. Redirect with the
+  `RESEND_REPLY_TO` secret plus a redeploy of the two senders.
 - **The twelve edge functions still read the legacy key variables**
   (`SUPABASE_SERVICE_ROLE_KEY ?? SB_SECRET_KEY`). Raised by the operator this
   session and confirmed against the docs: legacy `anon`/`service_role` keep
@@ -209,6 +215,48 @@ Login" out of habit will now refuse him and name the right button.
   Authorization JWT, so it would need its own signature verification. See
   §B of the 2026-08-28 entry on how one wrong `verify_jwt` flag locks every
   pastor out. This remains I1, deliberately not attempted on handoff day.
+
+### J. §H1 closed — PIN emails now carry a reply address that reaches someone
+
+**Verified in a delivered message, not just deployed.** A PIN was sent to a
+throwaway pastor row and the received email's `Reply-To` read
+`kgfcm2023@gmail.com`; the row was deleted afterwards.
+
+**The fix is `reply_to`, and `RESEND_FROM` stays unset on purpose.** Pointing
+the From address at a reachable mailbox does not work: Resend only sends from
+a domain verified against the API key, and an unverified From fails the send
+outright — already recorded in this project's audit log on 2026-05-13,
+`send_status 400`, *"The associated domain with your API key is not
+verified."* Changing `RESEND_FROM` to a Gmail would have stopped every PIN
+email silently. `reply_to` has no such restriction, so the From address stays
+verified and DKIM/SPF/DMARC alignment is untouched.
+
+Defaults to `kgfcm2023@gmail.com` in code, overridable via
+`RESEND_REPLY_TO`, mirroring how `RESEND_FROM` already works. Defaulted
+rather than conditionally omitted so that clearing the secret cannot quietly
+restore the unreplyable behaviour. Field name and type checked against
+Resend's API reference: `reply_to`, string or string[].
+
+**Deploy — the shape a safe one has.** `kgfcm-admin-pin-issue` v8→v9 and
+`kgfcm-pin-reset` v13→v14, deployed **by name**, without
+`--no-verify-jwt`. Confirmed by the metadata that moves, never by reading
+files back through the MCP connector (see the 2026-08-31 note above): the
+other **ten functions stayed at their prior versions** — no repeat of §I's
+whole-project redeploy — and both `verify_jwt` flags survived, `true` for
+admin-pin-issue and `false` for pin-reset, because `config.toml` declares
+them. `kgfcm-pin-login` untouched at v12.
+
+**This deploy also shipped the fail-closed `_shared/cors.ts`** from `b4b1bc4`,
+which had been sitting undeployed since 2026-08-31, into those two functions
+only. Runtime behaviour is unchanged while `ALLOWED_ORIGINS` is set. The
+other ten still run the old module.
+
+Also cleared a pre-existing `TS2352` in `kgfcm-admin-pin-issue`: the select is
+a ternary, so supabase-js's row-type parser receives a union of two literals
+where it expects one and resolves to `ParserError`. Cast through `unknown`.
+Runtime unchanged. **It stayed hidden because CI runs `deno lint` and
+`deno test --no-check`, never `deno check`** — type errors in edge functions
+do not fail the build. Worth closing in `ci.yml`.
 
 ---
 
