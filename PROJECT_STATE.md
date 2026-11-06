@@ -301,10 +301,12 @@ operator.** Tests generate real P-256 keys (27 tests total).
   Settings → API Keys (reversible). Nothing in code, cron or vault uses
   them now. Do it before the end-of-2026 retirement, after one green
   scheduled devotion run on the secret key.
-- **Unset the unused `SB_*` function secrets** (`SB_ANON_KEY`,
-  `SB_SERVICE_ROLE_KEY`, `SB_SECRET_KEY`, `SB_PUBLISHABLE_KEY`, `SB_URL`):
-  `supabase secrets unset … --remote=kseocbwhuveieqhayske`. Nothing reads
-  them. `SB_SERVICE_ROLE_KEY` holds a legacy JWT.
+- ~~Unset the unused `SB_*` function secrets~~ — **done 2026-11-06**
+  (`SB_ANON_KEY`, `SB_SERVICE_ROLE_KEY`, `SB_SECRET_KEY`,
+  `SB_PUBLISHABLE_KEY`, `SB_URL`). Functions re-probed afterwards: server
+  key path and database writes both work. The remaining
+  `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` are platform-managed
+  and unused by code.
 - `kgfcm-checkin-remind` is fixed but **not scheduled** — a product
   decision (weekly? daily?).
 
