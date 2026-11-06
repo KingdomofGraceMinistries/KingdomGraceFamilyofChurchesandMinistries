@@ -10,12 +10,12 @@
 //               could already trigger a pastor reset before this
 //               endpoint existed; narrowing it here would remove a
 //               capability they have today.
-//   service_role → allowed for either, as a trusted server context
+//   secret key → allowed for either, as a trusted server context
 //               (pg_net, scheduled jobs). This adds no privilege: a
 //               holder of that key can already write pin_bcrypt
 //               directly. It only lets server-side automation reuse
 //               this audited, bcrypted, email-only path rather than
-//               hand-rolling a weaker one. Audited as "service-role".
+//               hand-rolling a weaker one. Audited as actor "server".
 //
 // Why this exists separately from kgfcm-pin-reset: that flow
 // emails an 8-hex reset TOKEN, which the recipient must then
@@ -48,11 +48,10 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { SECRET_KEY, apikeyOf, bearerOf, isServerCaller, verifiedUserClaims } from "../_shared/server_key.ts";
 import { rateLimit, padTo } from "../_shared/rate_limit.ts";
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const RESEND_API_KEY   = Deno.env.get("RESEND_API_KEY")            ?? "";
 const RESEND_FROM      = Deno.env.get("RESEND_FROM")               ?? "Kingdom Grace <noreply@kingdomgracefamily.com>";
 // Where a reply actually goes. The From address is a Resend sending identity on
@@ -72,7 +71,7 @@ Deno.serve(async (req: Request) => {
   const started = performance.now();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   // Server-to-server callers (pg_net) send no Origin header. CORS is a browser
-  // control, and those callers are authenticated by the service-role JWT below.
+  // control, and those callers are authenticated by the secret key below.
   // Only reject when an Origin IS present and unallowed. Same pattern as
   // kgfcm-checkin-remind, kgfcm-push-send and kgfcm-devotion-generate-v2.
   if (req.headers.get("origin") && !isOriginAllowed(req)) {
@@ -80,28 +79,26 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const ip = (req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
 
-  // The Functions Gateway already verified the signature (verify_jwt:true),
-  // so claims can be read directly — same pattern as kgfcm-devotion-generate.
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) return jsonResponse(req, { error: "Missing JWT" }, 401);
-  const claims = decodeJwtClaims(jwt);
-  if (!claims) return jsonResponse(req, { error: "Invalid JWT" }, 401);
+  // Two kinds of caller. A trusted server context — pg_net / scheduled jobs —
+  // presents a secret key on the `apikey` header (_shared/server_key.ts).
+  // Granting it adds no privilege: a holder of that key can already write
+  // pin_bcrypt directly; it only lets server-side automation use the same
+  // audited, bcrypted, email-only path as the UI. Everyone else presents a
+  // user session JWT. This function is deployed with verify_jwt = false (the
+  // platform check only understands legacy keys), so that JWT is verified
+  // here with getClaims() — never merely decoded.
+  const isServer = isServerCaller(apikeyOf(req));
+  const claims = isServer ? {} : await verifiedUserClaims(supa, bearerOf(req));
+  if (!claims) return jsonResponse(req, { error: "Invalid or missing session" }, 401);
   const appMeta = (claims.app_metadata ?? {}) as Record<string, unknown>;
   const actorRole = typeof appMeta.role === "string" ? appMeta.role : "";
-  // Trusted server context: pg_net / scheduled jobs presenting the project's
-  // service-role token. Granting it here adds no privilege — a holder of that
-  // key can already write pin_bcrypt directly — it only lets server-side
-  // automation use the same audited, bcrypted, email-only path as the UI
-  // instead of hand-rolling a weaker one. Same allowance kgfcm-devotion-
-  // generate-v2 makes for the cron.
-  const isServiceRole = claims.role === "service_role";
-  const actorId = isServiceRole
-    ? "service-role"
+  const actorId = isServer
+    ? "server"
     : (typeof claims.sub === "string" ? claims.sub : "unknown");
 
   const bodyRaw = await req.json().catch(() => ({} as Record<string, unknown>));
@@ -120,7 +117,7 @@ Deno.serve(async (req: Request) => {
   //   rf_pastors — bishop or admin. Admins already manage pastors and could
   //                already trigger a pastor reset before this endpoint existed;
   //                narrowing that here would remove a capability they have.
-  const allowed = isServiceRole || (targetTable === "rf_admins"
+  const allowed = isServer || (targetTable === "rf_admins"
     ? actorRole === "bishop"
     : (actorRole === "bishop" || actorRole === "admin"));
   if (!allowed) {
@@ -210,17 +207,6 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-function decodeJwtClaims(jwt: string): Record<string, unknown> | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
 
 // CSPRNG 6-digit PIN. Rejection sampling: values at or above the largest
 // multiple of 1e6 that fits in a uint32 are discarded, so every one of the

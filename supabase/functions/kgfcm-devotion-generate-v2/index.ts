@@ -30,15 +30,13 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { SECRET_KEY, apikeyOf, bearerOf, isServerCaller, verifiedUserClaims } from "../_shared/server_key.ts";
 
 const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")              ?? "";
-// Supabase's newer key model: sb_secret_* replaces the legacy service_role
-// JWT. PostgREST accepts both for service-role-level DB operations. The
-// publishable key (sb_publishable_*, anon-equivalent) is NOT needed inside
-// this function because we never call supa.auth.getUser() — the Functions
-// Gateway has already verified the incoming JWT (verify_jwt:true), so we
-// decode claims directly and trust the role/app_metadata they carry.
-const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
+// The admin client uses the project's secret key (_shared/server_key.ts).
+// No publishable key is needed: we never call supa.auth.getUser() — the
+// Functions Gateway has already verified a user JWT (verify_jwt: true), so
+// its claims are read directly.
 const ANTHROPIC_API_KEY  = Deno.env.get("ANTHROPIC_API_KEY")         ?? "";
 const MODEL              = "claude-haiku-5-5";
 const EFFORT             = "medium";
@@ -69,8 +67,8 @@ interface ReviewResult {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
   // pg_cron POSTs from pg_net carry no Origin header. CORS is browser-only;
-  // server-to-server callers are authenticated by the service-role JWT
-  // verified below. Only reject when an Origin IS present and doesn't match
+  // server-to-server callers are authenticated by the secret key checked
+  // below. Only reject when an Origin IS present and doesn't match
   // the allowlist (untrusted browser). Same pattern as kgfcm-checkin-remind
   // and kgfcm-push-send, both of which are also reachable by cron / other
   // edge functions.
@@ -79,31 +77,25 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const ip = (req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
 
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) return jsonResponse(req, { error: "Missing JWT" }, 401);
-
-  // Two legitimate callers, distinguished by claim shape:
-  //   1. pg_cron via pg_net, presenting the project's service_role token
-  //      from vault. JWT carries role="service_role".
-  //   2. Bishop / admin from the browser, presenting their user JWT. JWT
-  //      carries role="authenticated" plus app_metadata.role in {bishop,admin}.
-  // Both JWTs are signed by the project's JWT secret, and the Functions
-  // Gateway already verified that signature (verify_jwt:true). We read
-  // claims directly — no auth-API roundtrip needed, so no dependency on
-  // the publishable key inside this function.
-  const claims = decodeJwtClaims(jwt);
-  if (!claims) return jsonResponse(req, { error: "Invalid JWT" }, 401);
-  const isServiceRole = claims.role === "service_role";
-
+  // Two legitimate callers:
+  //   1. pg_cron via pg_net, presenting a secret key (vault:
+  //      kgfcm_secret_key) on the `apikey` header — recognised by exact
+  //      match against SUPABASE_SECRET_KEYS, not by claims.
+  //   2. Bishop / admin from the browser, presenting their user JWT. This
+  //      function is deployed with verify_jwt = false (the platform check only
+  //      understands legacy keys), so the JWT is verified here with
+  //      getClaims(); its claims carry app_metadata.role in {bishop, admin}.
   let actorId: string;
-  if (isServiceRole) {
+  if (isServerCaller(apikeyOf(req))) {
     actorId = "cron-system";
   } else {
+    const claims = await verifiedUserClaims(supa, bearerOf(req));
+    if (!claims) return jsonResponse(req, { error: "Invalid or missing session" }, 401);
     const appMeta = (claims.app_metadata ?? {}) as Record<string, unknown>;
     const appRole = appMeta.role;
     if (appRole !== "bishop" && appRole !== "admin") {
@@ -205,21 +197,6 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Read the claims segment of a JWT. Safe to call without re-verifying the
-// signature because this function is deployed with verify_jwt:true, so the
-// Supabase Functions Gateway has already validated signature + expiry before
-// the request reaches this code.
-function decodeJwtClaims(jwt: string): Record<string, unknown> | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
 
 function callAnthropic(systemPrompt: string, userPrompt: string, maxTokens: number): Promise<string> {
   return fetch("https://api.anthropic.com/v1/messages", {

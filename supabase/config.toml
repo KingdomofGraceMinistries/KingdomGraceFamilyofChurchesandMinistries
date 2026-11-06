@@ -384,17 +384,24 @@ deno_version = 2
 # secret_key = "env(SECRET_VALUE)"
 
 # ── Edge function JWT verification ──────────────────────────────
-# Mirrors the deployed state, verified against the live project on
-# 2026-08-28. Declared explicitly because the CLI applies its own
-# default when a function is absent from this file: an undeclared
-# `supabase functions deploy` would flip the four PIN endpoints to
-# verify_jwt = true and lock every pastor out of login.
+# Declared explicitly because the CLI applies its own default when a
+# function is absent from this file: an undeclared `supabase functions
+# deploy` would flip the PIN endpoints to verify_jwt = true and lock
+# every pastor out of login.
 #
-# The four `false` entries are the pre-session auth boundary — the
-# caller has no JWT yet by definition. Each one does its own
-# rate limiting and constant-time comparison in the function body
-# (see _shared/rate_limit.ts). Every other function requires a
-# verified caller.
+# verify_jwt = true  — called only by signed-in users; the platform
+#                      validates the session JWT before the handler runs.
+# verify_jwt = false — two different reasons, and EVERY one authorises in
+#                      code:
+#   * PIN endpoints: the pre-session auth boundary — the caller has no
+#     JWT yet. Each does its own rate limiting and constant-time
+#     comparison (_shared/rate_limit.ts).
+#   * Functions servers call (pg_cron/pg_net, other functions): servers
+#     present a secret key (sb_secret_…) on the `apikey` header, and the
+#     platform's verify_jwt check only understands the legacy JWT keys
+#     (Supabase, "Migrating to publishable and secret API keys", Step 4).
+#     They check the key with isServerCaller(), and any user JWT with
+#     getClaims() (_shared/server_key.ts). 2026-11-06.
 
 [functions.kgfcm-pin-login]
 verify_jwt = false
@@ -408,8 +415,9 @@ verify_jwt = false
 [functions.kgfcm-pin-reset-confirm]
 verify_jwt = false
 
+# Server (secret key) or bishop/admin (verified JWT).
 [functions.kgfcm-admin-pin-issue]
-verify_jwt = true
+verify_jwt = false
 
 [functions.kgfcm-ai-proxy]
 verify_jwt = true
@@ -417,20 +425,24 @@ verify_jwt = true
 [functions.kgfcm-audit]
 verify_jwt = true
 
+# Server only (secret key).
 [functions.kgfcm-checkin-remind]
-verify_jwt = true
+verify_jwt = false
 
+# Server (secret key, the daily cron) or bishop/admin (verified JWT).
 [functions.kgfcm-devotion-generate]
-verify_jwt = true
+verify_jwt = false
 
+# Server (secret key, the daily cron) or bishop/admin (verified JWT).
 [functions.kgfcm-devotion-generate-v2]
-verify_jwt = true
+verify_jwt = false
 
 [functions.kgfcm-push-notify]
 verify_jwt = true
 
+# Server only (secret key).
 [functions.kgfcm-push-send]
-verify_jwt = true
+verify_jwt = false
 
 [analytics]
 enabled = true

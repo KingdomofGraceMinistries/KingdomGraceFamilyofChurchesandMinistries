@@ -1,12 +1,13 @@
 // ============================================================
 // kgfcm-checkin-remind — Daily check-in reminder cron.
 //
-// Invoked by pg_cron via net.http_post with the service-role
-// bearer. Finds pastors with no check-in in 7+ days, sends each
-// a push, and pings the bishop with the overdue list.
+// Invoked server-side (net.http_post) with a secret key on the `apikey`
+// header (_shared/server_key.ts). Finds pastors with no check-in in 7+ days,
+// sends each a push, and pings the bishop with the overdue list.
 //
-// Deploy with verify_jwt: true. Server callers only: the role claim must
-// be service_role. No cron job schedules it yet (cron.job, 2026-11-06).
+// Deployed with verify_jwt = false (the platform check only understands
+// legacy keys); the secret key is checked in code. Server callers only. No cron job
+// schedules it yet (cron.job, 2026-11-06).
 //
 // Push subscriptions are keyed by auth.users ids, so reminders go to each
 // overdue pastor's auth_user_id and the alert to the bishop's — not to
@@ -17,10 +18,9 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { SECRET_KEY, apikeyOf, isServerCaller } from "../_shared/server_key.ts";
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -29,15 +29,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(req, { error: "Forbidden origin" }, 403);
   }
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // The gateway verified the signature (verify_jwt: true); read the role.
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  const claims = decodeJwtClaims(jwt);
-  if (claims?.role !== "service_role") {
-    await audit(supa, "CHECKIN_REMIND_DENIED", { actor_id: typeof claims?.sub === "string" ? claims.sub : "unknown", role: claims?.role ?? null });
+  // Server callers only — a secret key on the `apikey` header.
+  if (!isServerCaller(apikeyOf(req))) {
+    await audit(supa, "CHECKIN_REMIND_DENIED", {});
     return jsonResponse(req, { error: "Forbidden" }, 403);
   }
 
@@ -97,23 +95,8 @@ Deno.serve(async (req: Request) => {
 async function callPushSend(payload: Record<string, unknown>): Promise<void> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/kgfcm-push-send`, {
     method:  "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+    headers: { "Content-Type": "application/json", apikey: SECRET_KEY },
     body:    JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`push-send failed (${res.status})`);
-}
-
-// Read the claims segment of a JWT. Safe without re-verifying the signature
-// because this function is deployed with verify_jwt: true — the gateway has
-// already validated signature and expiry before the request reaches here.
-function decodeJwtClaims(jwt: string): Record<string, unknown> | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }

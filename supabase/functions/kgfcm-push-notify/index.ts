@@ -20,10 +20,9 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { SECRET_KEY } from "../_shared/server_key.ts";
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const FRESH_MINUTES    = 10;
 
 type NotifyType = "dm" | "prayer" | "announcement" | "blast" | "win" | "fast" | "event";
@@ -52,7 +51,7 @@ Deno.serve(async (req: Request) => {
   if (!isOriginAllowed(req))    return jsonResponse(req, { error: "Forbidden origin" }, 403);
   if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const ip = (req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
@@ -189,7 +188,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: {
         "Content-Type":  "application/json",
-        Authorization:   `Bearer ${SERVICE_ROLE_KEY}`,
+        apikey:          SECRET_KEY,
       },
       body: JSON.stringify(pushPayload),
     });

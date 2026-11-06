@@ -19,12 +19,10 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { PUBLISHABLE_KEY, SECRET_KEY } from "../_shared/server_key.ts";
 import { rateLimit, padTo, hashCode } from "../_shared/rate_limit.ts";
 
 const SUPABASE_URL     = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format keys first: supabase-js 2.119.0 still hands sb_secret_*/sb_publishable_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
-const ANON_KEY         = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SB_PUBLISHABLE_KEY") ?? "";
 const MIN_RESPONSE_MS  = 500;
 const EMAIL_RE         = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const CODE_RE          = /^[0-9a-f]{8}$/i;
@@ -45,7 +43,7 @@ Deno.serve(async (req: Request) => {
   if (!isOriginAllowed(req))    return jsonResponse(req, { error: "Forbidden origin" }, 403);
   if (req.method !== "POST")    return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const ip = (req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
@@ -101,8 +99,8 @@ Deno.serve(async (req: Request) => {
       const link = await supa.auth.admin.generateLink({ type: "magiclink", email });
       const otp  = link.data?.properties?.email_otp;
       if (!link.error && otp) {
-        const anonClient = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-        const verified = await anonClient.auth.verifyOtp({ email, token: otp, type: "email" });
+        const publicClient = createClient(SUPABASE_URL, PUBLISHABLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+        const verified = await publicClient.auth.verifyOtp({ email, token: otp, type: "email" });
         if (!verified.error && verified.data.session) {
           session = {
             access_token:  verified.data.session.access_token,

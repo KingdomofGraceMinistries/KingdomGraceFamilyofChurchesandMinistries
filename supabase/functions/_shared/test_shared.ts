@@ -5,6 +5,8 @@
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@^1.0.19";
 import { hashIdentifier } from "./audit.ts";
 import { generateCode, hashCode, LIMITS, padTo, rateLimit } from "./rate_limit.ts";
+import { isServerCaller, parsePublishableKeys, parseSecretKeys } from "./server_key.ts";
+import { importVapidSigningKey, signVapidJwt } from "./vapid.ts";
 
 Deno.test("hashIdentifier produces 64-hex SHA-256 and is deterministic", async () => {
   const a = await hashIdentifier("Bishop@KGFCM.LOCAL");
@@ -176,4 +178,97 @@ Deno.test("rateLimit — fails closed when the count cannot be read", async () =
     await rateLimit({ supa: fakeSupa({ failCount: true }), email: "p@x.org", ip: "1.1.1.1", kind: "login" });
   } catch { threw = true; }
   assert(threw, "count failure must throw, not read as zero attempts");
+});
+
+// ── isServerCaller — a configured secret key, never a token's claims ──
+const KEY_A = "sb_secret_" + "a".repeat(32);
+const KEY_B = "sb_secret_" + "b".repeat(32);
+
+Deno.test("isServerCaller — any configured secret key is a server caller", () => {
+  assertEquals(isServerCaller(KEY_A, [KEY_A, KEY_B]), true);
+  assertEquals(isServerCaller(KEY_B, [KEY_A, KEY_B]), true);
+});
+
+Deno.test("isServerCaller — anything else is not", () => {
+  assertEquals(isServerCaller("", [KEY_A]), false);
+  assertEquals(isServerCaller(KEY_A.slice(0, -1) + "z", [KEY_A]), false);
+  assertEquals(isServerCaller(KEY_A + "a", [KEY_A]), false);
+  assertEquals(isServerCaller("sb_publishable_" + "a".repeat(27), [KEY_A]), false);
+  // A legacy service_role JWT is not accepted, whatever its claims say.
+  // Header/payload decode to {"alg":"HS256"} / {"role":"service_role"}.
+  const legacyJwt = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig";
+  assertEquals(isServerCaller(legacyJwt, [KEY_A]), false);
+});
+
+Deno.test("isServerCaller — refuses everything when no secret key is configured", () => {
+  assertEquals(isServerCaller(KEY_A, []), false);
+  assertEquals(isServerCaller("", []), false);
+});
+
+Deno.test("parseSecretKeys — reads SUPABASE_SECRET_KEYS, ignores anything that is not a secret key", () => {
+  assertEquals(parseSecretKeys(JSON.stringify({ default: KEY_A, ci: KEY_B })), { default: KEY_A, ci: KEY_B });
+  assertEquals(parseSecretKeys(JSON.stringify({ default: "eyJ.legacy.jwt", other: 5 })), {});
+  assertEquals(parseSecretKeys("not json"), {});
+  assertEquals(parseSecretKeys(undefined), {});
+  assertEquals(parseSecretKeys("[1,2]"), {});
+});
+
+Deno.test("parsePublishableKeys — reads SUPABASE_PUBLISHABLE_KEYS, never a secret or legacy key", () => {
+  const PUB = "sb_publishable_" + "p".repeat(27);
+  assertEquals(parsePublishableKeys(JSON.stringify({ default: PUB })), { default: PUB });
+  assertEquals(parsePublishableKeys(JSON.stringify({ default: KEY_A })), {});
+  assertEquals(parsePublishableKeys(JSON.stringify({ default: "eyJ.legacy.anon" })), {});
+});
+
+// ── VAPID signing key — real P-256 keys in the format generators emit ──
+function toB64url(bytes: Uint8Array): string {
+  let str = "";
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+Deno.test("importVapidSigningKey — a generated key pair signs, and the public key verifies", async () => {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const rawPublic = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+  // VAPID env format: private = raw 32-byte scalar (the JWK d), public = 65-byte point.
+  const key = await importVapidSigningKey(jwk.d as string, toB64url(rawPublic));
+  const data = new TextEncoder().encode("header.claims");
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, data);
+  assert(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, sig, data));
+});
+
+Deno.test("importVapidSigningKey — rejects keys of the wrong shape with a clear error", async () => {
+  let msg = "";
+  try { await importVapidSigningKey(toB64url(new Uint8Array(31)), toB64url(new Uint8Array(65).fill(4))); }
+  catch (e) { msg = (e as Error).message; }
+  assertMatch(msg, /32 bytes/);
+});
+
+Deno.test("importVapidSigningKey — refuses a private key that does not match the public key", async () => {
+  const a = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const b = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const dA = (await crypto.subtle.exportKey("jwk", a.privateKey)).d as string;
+  const pubB = new Uint8Array(await crypto.subtle.exportKey("raw", b.publicKey));
+  let msg = "";
+  try { await importVapidSigningKey(dA, toB64url(pubB)); } catch (e) { msg = (e as Error).message; }
+  assertMatch(msg, /does not match/);
+});
+
+Deno.test("signVapidJwt — ES256 token whose raw signature verifies, exp 12h ahead", async () => {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const d = (await crypto.subtle.exportKey("jwk", pair.privateKey)).d as string;
+  const pub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+  const key = await importVapidSigningKey(d, toB64url(pub));
+  const now = 1_800_000_000;
+  const token = await signVapidJwt(key, "https://fcm.googleapis.com", "mailto:ops@example.org", now);
+  const [h, c, s] = token.split(".");
+  const fromB64url = (x: string) => Uint8Array.from(atob(x.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - x.length % 4) % 4)), (ch) => ch.charCodeAt(0));
+  assertEquals(JSON.parse(new TextDecoder().decode(fromB64url(h))), { typ: "JWT", alg: "ES256" });
+  const claims = JSON.parse(new TextDecoder().decode(fromB64url(c)));
+  assertEquals(claims.exp, now + 12 * 60 * 60);
+  assertEquals(claims.aud, "https://fcm.googleapis.com");
+  const sig = fromB64url(s);
+  assertEquals(sig.length, 64);
+  assert(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, sig, new TextEncoder().encode(`${h}.${c}`)));
 });

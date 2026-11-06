@@ -2,7 +2,7 @@
 // kgfcm-push-send — Web Push sender (RFC 8291 aes128gcm + VAPID).
 //
 // Server-to-server only: kgfcm-push-notify, kgfcm-checkin-remind, and
-// SQL via pg_net, all presenting a service_role JWT. No user JWT is
+// SQL via pg_net, all presenting a secret key on the `apikey` header. No user JWT is
 // accepted — not even the bishop's. The app never calls this directly;
 // it goes through kgfcm-push-notify, which builds the text from the
 // database. A user-callable sender would let its caller push any text to
@@ -15,13 +15,13 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
+import { importVapidSigningKey, signVapidJwt } from "../_shared/vapid.ts";
+import { SECRET_KEY, apikeyOf, isServerCaller } from "../_shared/server_key.ts";
 
 const VAPID_PUBLIC_KEY      = Deno.env.get("VAPID_PUBLIC_KEY")          ?? "";
 const VAPID_PRIVATE_KEY     = Deno.env.get("VAPID_PRIVATE_KEY")         ?? "";
 const VAPID_SUBJECT         = Deno.env.get("VAPID_SUBJECT")             ?? "mailto:kgfcm2023@gmail.com";
 const SUPABASE_URL          = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
-const SERVICE_ROLE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -30,20 +30,15 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
-  const supa: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  const supa: SupabaseClient = createClient(SUPABASE_URL, SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Authorization: service_role only. The Functions Gateway has already
-  // verified the JWT signature (verify_jwt: true), so the role claim can be
-  // read directly — the same check kgfcm-admin-pin-issue and the devotion
-  // function use. Comparing the token text to this function's own key
-  // instead refused valid service tokens, such as the vault copy pg_net uses.
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) return jsonResponse(req, { error: "Missing JWT" }, 401);
-  const claims = decodeJwtClaims(jwt);
-  if (claims?.role !== "service_role") {
-    await audit(supa, "PUSH_SEND_DENIED", { actor_id: typeof claims?.sub === "string" ? claims.sub : "unknown", role: claims?.role ?? null });
+  // Authorization: server callers only — a secret key on the `apikey` header
+  // (_shared/server_key.ts). No user session is accepted. Deployed with
+  // verify_jwt = false because the platform check only understands legacy keys.
+  if (!isServerCaller(apikeyOf(req))) {
+    await audit(supa, "PUSH_SEND_DENIED", {});
     return jsonResponse(req, { error: "Forbidden" }, 403);
   }
 
@@ -61,7 +56,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const subsRes = await fetch(`${SUPABASE_URL}/rest/v1/rf_push_subscriptions?${filter}`, {
-      headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+      headers: { apikey: SECRET_KEY },
     });
     if (!subsRes.ok) {
       await audit(supa, "PUSH_SEND_SUBS_FETCH_FAILED", { status: subsRes.status });
@@ -82,6 +77,10 @@ Deno.serve(async (req: Request) => {
 
     let sent = 0, failed = 0;
     const staleIds: string[] = [];
+    // Status codes of failed deliveries (not the endpoints), so a rejection
+    // can be diagnosed from rf_audit_log: 403 usually means a VAPID mismatch.
+    const failStatuses: number[] = [];
+    let firstError = "";
     for (const sub of subscriptions) {
       try {
         const result = await sendWebPush(
@@ -89,40 +88,32 @@ Deno.serve(async (req: Request) => {
           payload,
         );
         if (result.ok) sent++;
-        else if (result.status === 404 || result.status === 410) { staleIds.push(sub.id); failed++; }
-        else failed++;
-      } catch { failed++; }
+        else {
+          failed++;
+          failStatuses.push(result.status);
+          if (result.status === 404 || result.status === 410) staleIds.push(sub.id);
+        }
+      } catch (e) {
+        failed++;
+        failStatuses.push(0);
+        if (!firstError) firstError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+      }
     }
 
     if (staleIds.length > 0) {
       await fetch(
         `${SUPABASE_URL}/rest/v1/rf_push_subscriptions?id=in.(${staleIds.map((id) => `"${id}"`).join(",")})`,
-        { method: "DELETE", headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } },
+        { method: "DELETE", headers: { apikey: SECRET_KEY } },
       );
     }
 
-    await audit(supa, "PUSH_SEND_DONE", { sent, failed, cleaned: staleIds.length });
+    await audit(supa, "PUSH_SEND_DONE", { sent, failed, cleaned: staleIds.length, fail_statuses: failStatuses.slice(0, 10), first_error: firstError || null });
     return jsonResponse(req, { sent, failed, cleaned: staleIds.length }, 200);
   } catch (err) {
     await audit(supa, "PUSH_SEND_ERROR", { error: err instanceof Error ? err.message : String(err) });
     return jsonResponse(req, { error: "Internal error" }, 500);
   }
 });
-
-// Read the claims segment of a JWT. Safe without re-verifying the signature
-// because this function is deployed with verify_jwt: true — the gateway has
-// already validated signature and expiry before the request reaches here.
-function decodeJwtClaims(jwt: string): Record<string, unknown> | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
 
 // ============================================================
 // WEB PUSH: RFC 8291 + VAPID (RFC 8292) — unchanged from prior version.
@@ -132,9 +123,9 @@ async function sendWebPush(
   subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
   payload: string,
 ): Promise<{ ok: boolean; status: number }> {
-  const vapidPrivateBytes = base64UrlDecode(VAPID_PRIVATE_KEY);
+  const signingKey = await vapidSigningKey();
   const audience = new URL(subscription.endpoint).origin;
-  const jwt = await createVapidJwt(vapidPrivateBytes, audience, VAPID_SUBJECT);
+  const jwt = await signVapidJwt(signingKey, audience, VAPID_SUBJECT);
   const encrypted = await encryptPayload(payload, subscription.keys.p256dh, subscription.keys.auth);
   const res = await fetch(subscription.endpoint, {
     method: "POST",
@@ -157,19 +148,13 @@ function bs(u: Uint8Array): ArrayBuffer {
   return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
 }
 
-async function createVapidJwt(privateKeyBytes: Uint8Array, audience: string, subject: string): Promise<string> {
-  const header = base64UrlEncode(JSON.stringify({ typ: "JWT", alg: "ES256" }));
-  const now = Math.floor(Date.now() / 1000);
-  const claims = base64UrlEncode(JSON.stringify({ aud: audience, exp: now + 86400, sub: subject }));
-  const unsigned = `${header}.${claims}`;
-  const key = await crypto.subtle.importKey(
-    "pkcs8", bs(wrapEcPrivateKey(privateKeyBytes)),
-    { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
-  );
-  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(unsigned));
-  const rawSig = derToRaw(new Uint8Array(sig));
-  return `${unsigned}.${base64UrlEncodeBytes(rawSig)}`;
+// Imported once per instance and reused for every send.
+let cachedSigningKey: Promise<CryptoKey> | null = null;
+function vapidSigningKey(): Promise<CryptoKey> {
+  cachedSigningKey ??= importVapidSigningKey(VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY);
+  return cachedSigningKey;
 }
+
 
 async function encryptPayload(payload: string, p256dhBase64: string, authBase64: string): Promise<Uint8Array> {
   const clientPublicBytes = base64UrlDecode(p256dhBase64);
@@ -205,40 +190,10 @@ function base64UrlDecode(str: string): Uint8Array {
   const binary = atob(b64 + pad);
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
-function base64UrlEncode(str: string): string {
-  return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-function base64UrlEncodeBytes(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 function concatBytes(...arrays: Uint8Array[]): Uint8Array {
   const totalLength = arrays.reduce((sum, a) => sum + a.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
   for (const a of arrays) { result.set(a, offset); offset += a.length; }
   return result;
-}
-function wrapEcPrivateKey(rawKey: Uint8Array): Uint8Array {
-  const prefix = new Uint8Array([
-    0x30, 0x81, 0x87, 0x02, 0x01, 0x00, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86,
-    0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d,
-    0x03, 0x01, 0x07, 0x04, 0x6d, 0x30, 0x6b, 0x02, 0x01, 0x01, 0x04, 0x20,
-  ]);
-  return concatBytes(prefix, rawKey);
-}
-function derToRaw(der: Uint8Array): Uint8Array {
-  const raw = new Uint8Array(64);
-  let offset = 2;
-  offset++;
-  const rLen = der[offset++];
-  const rStart = rLen > 32 ? offset + (rLen - 32) : offset;
-  const rDest  = rLen < 32 ? 32 - rLen : 0;
-  raw.set(der.slice(rStart, offset + rLen), rDest);
-  offset += rLen;
-  offset++;
-  const sLen = der[offset++];
-  const sStart = sLen > 32 ? offset + (sLen - 32) : offset;
-  const sDest  = sLen < 32 ? 64 - sLen : 32;
-  raw.set(der.slice(sStart, offset + sLen), sDest);
-  return raw;
 }
