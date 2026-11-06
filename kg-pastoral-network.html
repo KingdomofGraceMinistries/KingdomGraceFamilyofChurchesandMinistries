@@ -5182,6 +5182,7 @@ const NOTIF = {
   pollInterval: null,
   audioCtx: null,
   permissionGranted: false,
+  pollErrorAudited: false,
 };
 
 // ── SOUND: gentle chime via Web Audio API ──
@@ -5351,7 +5352,7 @@ async function pollForNotifications(){
   try {
     // DMs — check for new messages
     const dmFilter=isBishop
-      ? {select:'id,sender_id,message_text,created_at,rf_pastors:sender_id(full_name)',order:'created_at.desc',limit:'1','sender_id':'neq.bishop'}
+      ? {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'1','sender_id':'neq.bishop'}
       : {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'1','recipient_id':'eq.'+uid,'sender_id':'eq.bishop'};
     const dms=await sbS('rf_direct_messages',dmFilter);
     if(dms.length){
@@ -5360,7 +5361,9 @@ async function pollForNotifications(){
       if(last.created_at>lastTs){
         NOTIF.lastSeen.dm=last.created_at;
         if(lastTs){ // don't notify on first load
-          const sender=isBishop?(last.rf_pastors?.full_name||'A pastor'):'Bishop '+C.bishopName.split(' ').pop();
+          // sender_id is text (it also holds the literal 'bishop'), so there is
+          // no FK for PostgREST to embed through — resolve the name client-side.
+          const sender=isBishop?(ST.allPastors.find(p=>p.id===last.sender_id)?.full_name||'A pastor'):'Bishop '+C.bishopName.split(' ').pop();
           addNotification('✉️','New message from '+sender, last.message_text, isBishop?null:'s-dm');
         }
       }
@@ -5408,7 +5411,14 @@ async function pollForNotifications(){
     }
 
     saveLocal('notif_last_seen',NOTIF.lastSeen);
-  } catch(e){ /* polling error — skip this cycle */ }
+  } catch(e){
+    // Skip this cycle, but record the first failure per session: a poll that
+    // fails every 60s silently is how the bishop's notifications went dark.
+    if(!NOTIF.pollErrorAudited){
+      NOTIF.pollErrorAudited=true;
+      audit('NOTIF_POLL_FAILED',{error:String(e&&e.message||e)});
+    }
+  }
 }
 
 // iOS-aware PWA-install detection. Apple Web Push (iOS 16.4+) requires the
