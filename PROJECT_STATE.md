@@ -160,7 +160,43 @@ one `kind=login` row and audited `LOGIN_FAILED`, not an error. Versions
 moved by 2 on this deploy (`kgfcm-ai-proxy` 18 → 20); `ezbr_sha256`
 changed only on the six functions that import the limiter.
 
-### I. Left open
+### I. Vendor admin account — a recorded exception, remove at handover
+
+The operator (Envision VirtualEdge) needs admin access to test before the
+system is handed to Kingdom Grace. **Creating an admin is bishop-only by
+design** (`create_admin` demands `app_metadata.role = 'bishop'`); this one
+was created from the database instead, at the operator's explicit
+instruction on 2026-11-06. It is an exception, not a new path.
+
+- `rf_admins`: **Accountable Technology – Support**,
+  `accountabletechnology@envisionvirtualedge.org`, id `7372fb04-…`, default
+  permissions. Same columns `create_admin` writes, minus the PIN.
+- PIN minted by `kgfcm-admin-pin-issue`, invoked from SQL via `net.http_post`
+  with the vault's `kgfcm_service_role` token — the same shape as the
+  devotion cron, and the server-caller allowance that function documents.
+  The plaintext PIN existed only in the function and the email. Audited
+  `ADMIN_PIN_ISSUED`, `delivered: true`, 15:55 UTC.
+- Same path re-issued **Gladys Bowden-Brown's** PIN at 15:53 UTC at the
+  operator's request (`delivered: true`); her previous PIN no longer works.
+
+**Handover checklist — the vendor must not keep access to confessional
+data:**
+
+1. Set the vendor admin `status = 'inactive'` (login and reset both filter
+   on `active`). Do not delete — the audit trail references its id.
+2. Rotate the Supabase CLI access token used this session (valid until
+   December) and revoke any other operator PATs.
+3. Confirm with the bishop that Gladys and the bishop are the only active
+   admins.
+
+**Onboarding pastors from a list** uses the same path: insert into
+`rf_pastors` with the checks `create_pastor` makes (name and email required,
+no duplicate pastor or admin, `active`, role `pastor`), then `net.http_post`
+to `kgfcm-admin-pin-issue` with `{pastor_id}`. Verify each by
+`net._http_response` and the `ADMIN_PIN_ISSUED` audit row. After a pastor's
+first PIN login creates their auth user, magic-link sign-in works too.
+
+### J. Left open
 
 - **Live AI proxy test** — needs a signed-in session; to be run as the test
   pastor through the site.
