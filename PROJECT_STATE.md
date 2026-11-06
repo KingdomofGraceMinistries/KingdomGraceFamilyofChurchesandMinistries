@@ -117,10 +117,57 @@ commit and the file restored; nothing reached history.
 - Performance: 12 unused indexes (no traffic yet) and overlapping permissive
   policies (self + bishop). Revisit with real load.
 
-### H. Left open
+### H. Rate limiter — would have locked pastors out at the launch event
+
+Found during a pre-launch read of the app. `_shared/rate_limit.ts` counted
+attempts **without filtering by `kind`**, so login, reset, register and AI
+all drew from one budget: 5 per email and **20 per IP per hour, successful
+logins included**. Two consequences:
+
+- With ~30 pastors signing in from one venue or church Wi-Fi (one NAT
+  address), **the 21st would have been refused for an hour.**
+- `kgfcm-ai-proxy` recorded its calls as `login`, so five AI calls in an hour
+  blocked that pastor's next PIN login — and its comment promised "30/hour".
+
+Also: `rateLimit()` never checked its insert or count for errors. A failed
+write left the attempt uncounted; a failed count read as zero. Either way
+the limit silently opened.
+
+**Now** (`LIMITS` in `_shared/rate_limit.ts`, "at most N per hour", each kind
+counted only against itself):
+
+| kind | per email / user | per IP |
+|---|---|---|
+| login | 5 | 100 |
+| register | 5 | 100 |
+| reset | 5 | 40 |
+| ai | 30 (keyed by user id) | 300 |
+
+Per-email is what stops PIN guessing on one account; per-IP only bounds
+spraying across accounts, so raising it for the shared-Wi-Fi case costs
+nothing meaningful against a 10⁶ PIN space. Login per email went 6 → 5
+(the old `>` comparison allowed one extra). Count or insert errors now
+**throw** into each caller's audited 500 path; the proxy's limiter call
+moved inside its `try` so that path is audited too.
+
+Migration `20261106170000_rate_limit_ai_kind.sql` adds `'ai'` to the
+`kind` CHECK — **it must be applied before the functions deploy**, or the
+fail-closed insert turns every AI call into a 500. Pushed via CLI
+(ledger 26 ↔ 26), then functions. Five new tests in `_shared/test_shared.ts`,
+including 30 pastors × (one mistype + success) from one IP — which the old
+code fails at pastor 11. Verified live: an unknown-account login recorded
+one `kind=login` row and audited `LOGIN_FAILED`, not an error. Versions
+moved by 2 on this deploy (`kgfcm-ai-proxy` 18 → 20); `ezbr_sha256`
+changed only on the six functions that import the limiter.
+
+### I. Left open
 
 - **Live AI proxy test** — needs a signed-in session; to be run as the test
   pastor through the site.
+- The burnout check sends the pastor's **full name** to Claude
+  (`kg-pastoral-network.html:1263`); the prompt reads the same without it.
+- Empty `catch` blocks at `kg-pastoral-network.html` 1650, 1849, 1990, 3031
+  drop data loads silently — a pastor sees an empty section, no explanation.
 - The bishop's **Generate** button still calls `kgfcm-devotion-generate`
   (`kg-pastoral-network.html:3480`) while cron calls `-v2`. Same code in both,
   so it works; the two-slug arrangement is still debt.
