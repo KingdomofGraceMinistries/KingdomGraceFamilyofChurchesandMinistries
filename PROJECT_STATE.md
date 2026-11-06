@@ -188,6 +188,9 @@ data:**
    December) and revoke any other operator PATs.
 3. Confirm with the bishop that Gladys and the bishop are the only active
    admins.
+4. Removing or locking an admin now ends their sessions (trigger
+   `rf_admins_revoke_access`, migration `20261106200000`); access tokens
+   already issued expire within an hour and cannot be renewed.
 
 **Onboarding pastors from a list** uses the same path: insert into
 `rf_pastors` with the checks `create_pastor` makes (name and email required,
@@ -248,7 +251,64 @@ either — only two April rows stored under `'bishop'`. Now:
 Versions move by **2 per CLI deploy** (seen twice today) — that is the CLI,
 not a second deploy.
 
-### L. Left open
+### L. Secret keys replace the legacy JWT keys — and push finally works
+
+Supabase retires the legacy JWT-based `anon` / `service_role` keys at the
+**end of 2026**. Migrated per Supabase's "Migrating to publishable and
+secret API keys" and "Securing Edge Functions" (read before writing — an
+earlier pass this session extended the legacy pattern and was rightly
+stopped by the operator):
+
+- Functions read **`SUPABASE_SECRET_KEYS` / `SUPABASE_PUBLISHABLE_KEYS`**
+  (JSON, key `default`) through `_shared/server_key.ts`. Nothing reads
+  `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY` or the `SB_*` customs.
+- **Server callers send the secret key on the `apikey` header only.** On
+  `Authorization: Bearer` the platform parses it as a JWT and rejects it.
+- **`verify_jwt` only understands legacy keys**, so the five functions
+  servers call — `push-send`, `checkin-remind`, `devotion-generate[-v2]`,
+  `admin-pin-issue` — run with `verify_jwt = false` and authorise in code:
+  `isServerCaller()` (constant-time match against every configured secret
+  key) or, for bishop/admin callers, `auth.getClaims()` — **never a bare
+  decode**, because the platform no longer verifies the token there.
+  `config.toml` records the reason per function.
+- Daily devotion cron sends vault **`kgfcm_secret_key`** on `apikey`
+  (migration `20261106210000`, which refuses to run without it). The
+  legacy `kgfcm_service_role` vault secret is deleted. The vault value was
+  piped from `supabase projects api-keys --reveal` straight into
+  `vault.create_secret` — never printed, never on disk — and verified by
+  digest against the platform's default secret key.
+- Verified live: no key, a wrong secret key, the publishable key, a forged
+  legacy `service_role` token and a forged bishop JWT are all refused by
+  every server-called function; the vault key passes.
+
+**Push had never worked, for two independent reasons in `push-send`:**
+
+1. The VAPID private key was wrapped in a hand-built PKCS#8 header whose
+   lengths described a structure that also embeds the public key — never
+   appended — so `importKey` always threw `expected valid PKCS#8 data`.
+2. Web Crypto's ECDSA signature is already raw `r‖s`; it was run through a
+   DER-to-raw converter that scrambled it, so FCM answered 403.
+
+Now `_shared/vapid.ts`: JWK import with a sign/verify pair check, the raw
+signature used as-is, `exp` 12 h (not exactly the 24 h limit). Push-send
+audits failure statuses and the first error in `PUSH_SEND_DONE`. **First
+delivered push: 2026-11-06, to the operator's device — seen by the
+operator.** Tests generate real P-256 keys (27 tests total).
+
+### M. Left open
+
+- **Deactivate the legacy `anon` / `service_role` keys** — Dashboard →
+  Settings → API Keys (reversible). Nothing in code, cron or vault uses
+  them now. Do it before the end-of-2026 retirement, after one green
+  scheduled devotion run on the secret key.
+- **Unset the unused `SB_*` function secrets** (`SB_ANON_KEY`,
+  `SB_SERVICE_ROLE_KEY`, `SB_SECRET_KEY`, `SB_PUBLISHABLE_KEY`, `SB_URL`):
+  `supabase secrets unset … --remote=kseocbwhuveieqhayske`. Nothing reads
+  them. `SB_SERVICE_ROLE_KEY` holds a legacy JWT.
+- `kgfcm-checkin-remind` is fixed but **not scheduled** — a product
+  decision (weekly? daily?).
+
+### N. Left open (earlier in the session)
 
 - **Live AI proxy test** — needs a signed-in session; to be run as the test
   pastor through the site.
