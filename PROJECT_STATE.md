@@ -1,9 +1,131 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-11-06
 **Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🧭 2026-11-06 — pre-launch: Haiku 5.5, supabase-js 2.119.0, CI on Node 24
+
+Session goal: confirm the Claude key works and bring every dependency current
+ahead of launch. All twelve functions redeployed from this commit's tree.
+
+### A. Claude key — verified from the audit trail, not a test call
+
+`kgfcm-devotion-generate-v2` reads the same `ANTHROPIC_API_KEY` secret as the
+AI proxy, and `DEVOTION_AUTO_PUBLISHED` fired at 10:00:15 UTC on 2026-11-06
+with `attempts: 1` — a live Anthropic round-trip that morning. No
+`AI_UPSTREAM_ERROR` rows exist at all. The last `AI_CALL_OK` through the proxy
+itself was 2026-08-28; the proxy simply had no traffic since.
+
+### B. Claude Haiku 4.5 → Haiku 5.5 (operator's decision)
+
+Haiku 4.5 was still *Active*, not deprecated — this was a choice, not a forced
+migration. Model ID `claude-haiku-5-5` (no date suffix) in `kgfcm-ai-proxy`
+and both devotion functions. What the new model required, and why:
+
+- **Read the answer by block type.** Haiku 5.5 thinks by default, so the
+  response can begin with `thinking` blocks. The old `content[0].text` would
+  have read an empty thinking block as the answer. All three now join the
+  `text` blocks.
+- **Bigger `max_tokens`.** Thinking counts against the cap. Proxy 512 → 4096
+  (outreach 1500 → 8192); devotion 1400 → 8000; reviewer 500 → 4000. A cap is
+  a ceiling, not a cost — billing is on tokens actually produced.
+- **`output_config.effort: "medium"`** set explicitly. It is the model's
+  default; written out so a future reader does not have to know that.
+- **Refusals are new on this model** (HTTP 200, `stop_reason: "refusal"`), and
+  there is no server-side fallback for Haiku. Any `stop_reason` other than
+  `end_turn` now fails visibly: the proxy audits `AI_INCOMPLETE_RESPONSE`
+  (with `stop_reason` and refusal category) and returns 502; the devotion
+  function throws, which audits `DEVOTION_GENERATION_ERROR` and retries.
+- `anthropic-version: 2023-06-01` kept — still valid, and no request sends
+  `temperature`/`top_p`/`top_k`, which is what the newer version breaks.
+
+**Watch the first scheduled run (2026-11-07 10:00 UTC).** Thinking makes each
+call slower and a devotion can take up to six calls with retries. Check the
+row lands, `attempts`, and that the function finished inside the edge
+wall-clock limit. Read the first few devotions and care messages for voice.
+
+### C. supabase-js 2.50.5 → 2.119.0 — all twelve functions
+
+Changelog read across the range; nothing touches the calls these functions
+make (`from`, `rpc`, `auth.getUser`, `auth.admin.*`). **The "JWT-format key
+first" comments still hold and were re-pinned to 2.119.0 after reading its
+source:** `fetchWithAuth` still sends an `sb_secret_*` key as the Bearer to
+PostgREST unless the caller opts into `omitApiKeyAsBearer`, which none does.
+
+**`kgfcm-push-send` did not type-check before this session** — TS 5.7's
+tightened `BodyInit` rejected the `Uint8Array` body. Fixed by passing it
+through the file's existing `bs()` helper. All twelve now pass `deno check`,
+plus lint and the 13 `_shared` tests.
+
+### D. GitHub Actions moved off Node 20
+
+Node 20 left GitHub-hosted runners on 2026-09-16. `actions/checkout` v4 → v7,
+`gitleaks/gitleaks-action` v2 → v3, `github/codeql-action` v3 → v4 (v3 is
+deprecated December 2026). Release notes read per major; nothing changes for
+how these workflows use them. `denoland/setup-deno@v2` already runs on
+Node 24.
+
+### E. `config.toml` — two more CLI deprecations, and one hard warning
+
+`[auth.email] enable_signup` → `enabled`, `[auth.sms] enable_signup` →
+`enabled`, matching the template `supabase init` generates on CLI 3.0.0.
+**The new keys mean something different:** they switch the whole provider,
+sign-in included; blocking only new signups stays with `[auth]
+enable_signup`. Values unchanged (email on, SMS off), and `config diff`
+confirms both already match production.
+
+**SMS is off today but planned.** The app's only SMS use is the `sms:`
+share link on the Invites tab. When phone sign-in is built, that work
+includes setting `[auth.sms] enabled = true`.
+
+**Never run `supabase config push` from this repo.** `config diff` shows 21
+differences — this file holds local-dev values. A push would set `site_url`
+to `http://127.0.0.1:3000`, replace the kingdomgracefamily.com redirect
+allow-list (breaking every magic link and reset email), and turn off email
+confirmations, MFA TOTP and the OAuth server. The JWT map is applied by
+`functions deploy`, which is the only config path this repo uses.
+
+### F. Deploy — CLI, and how it was confirmed
+
+`supabase functions deploy --remote=kseocbwhuveieqhayske --use-api --yes`
+(CLI 3.0.0 deprecates `--project-ref`, and refuses a hosted change in a
+non-interactive run without `--yes` — nothing is changed until it gets one).
+Confirmed by the metadata that moves, per section I of 2026-08-28: every
+function's `version` +1 (`kgfcm-ai-proxy` 17 → 18, `-v2` 7 → 8), new
+`updated_at` and `ezbr_sha256`, the twelve `verify_jwt` flags unchanged. By
+behaviour: ai-proxy, audit and devotion-v2 return 401 without a JWT,
+pin-login 400 on an empty body, CORS returns only the apex.
+
+**The CLI token belongs in `.env` or a Codespaces secret — never
+`.env.example`.** This session the real value had been pasted into
+`.env.example`, which is tracked in a public repo. It was caught before any
+commit and the file restored; nothing reached history.
+
+### G. Pre-launch advisor read — nothing blocking
+
+- `create_admin` / `create_pastor` executable by `authenticated` — intended.
+  Both gate on `app_metadata.role` from the JWT (`bishop`; `bishop`/`admin`),
+  which a user cannot set on themselves.
+- `rf_reset_attempts` RLS on, no policies — intended deny-all; only edge
+  functions touch it with the service role.
+- Leaked-password protection off — not applicable; there are no Supabase
+  passwords in this app (PINs + email links).
+- Performance: 12 unused indexes (no traffic yet) and overlapping permissive
+  policies (self + bishop). Revisit with real load.
+
+### H. Left open
+
+- **Live AI proxy test** — needs a signed-in session; to be run as the test
+  pastor through the site.
+- The bishop's **Generate** button still calls `kgfcm-devotion-generate`
+  (`kg-pastoral-network.html:3480`) while cron calls `-v2`. Same code in both,
+  so it works; the two-slug arrangement is still debt.
+- An empty, untracked `package-lock.json` sits in the root; the project has
+  no npm dependencies.
 
 ---
 
