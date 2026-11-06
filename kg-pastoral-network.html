@@ -435,6 +435,7 @@ details[open] summary{border-bottom:0.5px solid var(--br);}
     <div class="notif-drawer-title">Notifications</div>
     <button class="notif-drawer-close" onclick="closeNotifDrawer()">✕</button>
   </div>
+  <div class="notif-settings" style="padding:12px 16px;border-bottom:0.5px solid var(--br)"><!-- injected by renderNotifSettings() --></div>
   <div id="notif-drawer-list" class="notif-drawer-list"></div>
 </div>
 <div id="app"><!-- Pastor PWA screens injected here --></div>
@@ -507,6 +508,7 @@ async function loadConfig(){
     C.aiProxyFn     = cfg.ai_proxy_fn    || C.aiProxyFn;
     C.pushNotifyFn  = cfg.push_notify_fn || C.pushNotifyFn;
     C.vapidPublicKey= cfg.vapid_public_key||C.vapidPublicKey;
+    C.dmNotifyAdmins= cfg.dm_notify_admins==='true';
     C.footerText    = cfg.footer_text    || C.footerText;
     C.footerUrl     = cfg.footer_url     || C.footerUrl;
     C.footerBrand   = cfg.footer_brand   || C.footerBrand;
@@ -1559,7 +1561,7 @@ function onScreen(id){
   else if(id==='s-fasts') loadFasts();
   else if(id==='s-events') loadEvents();
   else if(id==='s-devotion') loadDevotion();
-  else if(id==='s-settings') renderThemeOptions();
+  else if(id==='s-settings'){ renderThemeOptions(); renderNotifSettings(); }
 }
 
 // Build the theme picker from C.themes — fully data-driven, no hardcoded options
@@ -1598,6 +1600,13 @@ function renderThemeOptions(){
 async function logout(){
   audit('LOGOUT',{});
   NAV.history=[]; NAV.backTaps=0;
+  // Drop this device's push registration while the session can still
+  // authorise the delete, so a shared phone stops receiving this person's
+  // notifications. The per-device preference stays, and the next sign-in
+  // re-registers the device for whoever signs in.
+  try { await unregisterPushDevice(); }
+  catch(e){ audit('PUSH_UNSUBSCRIBE_FAILED',{message:String(e&&e.message||e).slice(0,200), on:'logout'}); }
+  hideNotifBanner();
   await signOutSession();
   ST.profile=null;
   if(NOTIF.pollInterval){ clearInterval(NOTIF.pollInterval); NOTIF.pollInterval=null; }
@@ -2645,7 +2654,7 @@ async function submitPrayer(){
   try {
     await sbI('rf_prayer_requests',{pastor_id:ST.session.userId,request_text:text,status:'active',prayed_count:0});
     audit('PRAYER_POSTED',{table:'rf_prayer_requests'});
-    firePushNotify('prayer',{pastor_id:ST.session.userId,pastor_name:ST.session.name});
+    firePushNotify('prayer',{pastor_name:ST.session.name});
     ta.value=''; hideErr('prayer-err'); loadPrayer();
   } catch(e){showErr('prayer-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post prayer request →';
@@ -2685,7 +2694,7 @@ async function submitWin(){
     }
     await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text||'',fire_count:0,glory_count:0,image_url:imageUrl||null});
     audit('WIN_POSTED',{table:'rf_wins',hasImage:!!imageUrl});
-    firePushNotify('win',{pastor_id:ST.session.userId,pastor_name:ST.session.name});
+    firePushNotify('win',{pastor_name:ST.session.name});
     ta.value=''; clearWinPhoto(); hideErr('win-err'); loadWins();
   } catch(e){showErr('win-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post your win →';
@@ -3107,7 +3116,7 @@ async function submitAnnouncement(){
       status:'active'
     });
     audit('ANNOUNCEMENT_POSTED',{table:'rf_announcements',hasImage:!!imageUrl});
-    firePushNotify('announcement',{pastor_id:ST.session.userId,title:$('ann-title')?.value.trim()||'',body:text||''});
+    firePushNotify('announcement',{title:$('ann-title')?.value.trim()||'',body:text||''});
     if(ta) ta.value='';
     if($('ann-title')) $('ann-title').value='';
     annPhotoData=null; annPhotoFile=null;
@@ -3253,7 +3262,7 @@ async function submitBishopAnn(){
       is_pinned:false,
       status:'active'
     });
-    firePushNotify('announcement',{pastor_id:'bishop',title:$('b-ann-title')?.value.trim()||'',body:text||''});
+    firePushNotify('announcement',{title:$('b-ann-title')?.value.trim()||'',body:text||''});
     if(ta) ta.value='';
     if($('b-ann-title')) $('b-ann-title').value='';
     bAnnPhotoFile=null;
@@ -4961,7 +4970,7 @@ function renderPastor(){
       <div class="chips">${['Prophecy','Teaching','Evangelism','Pastoral Care','Administration','Healing','Intercession','Apostolic','Helps','Exhortation','Giving','Leadership'].map(g=>`<div class="chip gift-chip" data-gift="${g}" onclick="this.classList.toggle('on')">${g}</div>`).join('')}</div>
       <div class="err" id="prof-err"></div><div class="ok-msg" id="prof-ok"></div>
       <button class="fsub" id="prof-save-btn" onclick="saveProfile()">Save profile →</button>
-      <button class="tnav-btn" style="width:100%;margin-top:14px;padding:14px;font-size:13px" onclick="go('s-settings')">⚙️ Display Settings</button>
+      <button class="tnav-btn" style="width:100%;margin-top:14px;padding:14px;font-size:13px" onclick="go('s-settings')">⚙️ Settings</button>
       <div style="height:24px"></div>
     </div>
   </div>
@@ -4977,11 +4986,15 @@ function renderPastor(){
 <!-- SETTINGS -->
 <div id="s-settings" class="screen">
   <div class="tnav">
-    <div class="tnav-logo"><div class="tnav-mark">⚙️</div><div><div class="tnav-title">Display Settings</div><div class="tnav-sub">Choose what's easy on your eyes</div></div></div>
+    <div class="tnav-logo"><div class="tnav-mark">⚙️</div><div><div class="tnav-title">Settings</div><div class="tnav-sub">Notifications and display</div></div></div>
     <button class="tnav-btn" onclick="go('s-profile')">← Back</button>
   </div>
   <div class="scroll">
     <div style="padding-top:18px">
+      <div class="card">
+        <div class="card-title" style="font-size:15px">Notifications</div>
+        <div class="notif-settings" style="margin-top:10px"><!-- injected by renderNotifSettings() --></div>
+      </div>
       <div class="card">
         <div class="card-title" style="font-size:15px">Theme</div>
         <div class="card-sub" style="margin-bottom:14px">Pick the look that's comfortable for you. You can change this anytime.</div>
@@ -5225,6 +5238,7 @@ function hideNotifToast(){ $('notif-toast').classList.remove('show'); clearTimeo
 // ── NOTIFICATION DRAWER ──
 function openNotifDrawer(){
   hideNotifToast();
+  renderNotifSettings();
   renderNotifDrawer();
   $('notif-backdrop').classList.add('open');
   $('notif-drawer').classList.add('open');
@@ -5297,14 +5311,120 @@ function addNotification(icon, title, msg, screen){
   saveLocal('notif_items',NOTIF.items.slice(0,50));
 }
 
-// ── BROWSER NOTIFICATION API (outside app) ──
-function requestNotifPermission(){
-  if(!('Notification' in window)) return;
-  if(Notification.permission==='granted'){ NOTIF.permissionGranted=true; subscribeToPush(); return; }
-  if(Notification.permission!=='denied'){
-    Notification.requestPermission().then(p=>{ NOTIF.permissionGranted=p==='granted'; if(p==='granted') subscribeToPush(); });
+// ── NOTIFICATION PREFERENCE (per device) ──
+// notif_pref is 'on', 'off', or null (never chosen). The app never asks for
+// permission on its own: the person turns notifications on from the switch in
+// Settings or the notification drawer, or from the one-time banner. That keeps
+// the browser prompt tied to a deliberate tap, and lets anyone turn
+// notifications off again — which the old ask-on-first-tap flow could not.
+const notifPref = () => loadLocal('notif_pref');
+function pushSupported(){
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+function notifStatus(){
+  if(IS_IOS && !isStandalonePWA()) return 'install';
+  if(!pushSupported()) return 'unsupported';
+  if(Notification.permission==='denied') return 'blocked';
+  return (notifPref()==='on' && Notification.permission==='granted') ? 'on' : 'off';
+}
+async function enableNotifications(){
+  if(IS_IOS && !isStandalonePWA()){ showIosInstallHint(); renderNotifSettings(); return; }
+  if(!pushSupported()){ renderNotifSettings(); return; }
+  const p = Notification.permission==='granted' ? 'granted' : await Notification.requestPermission();
+  if(p!=='granted'){ renderNotifSettings(); return; }
+  saveLocal('notif_pref','on');
+  NOTIF.permissionGranted=true;
+  hideNotifBanner();
+  await subscribeToPush();
+  renderNotifSettings();
+}
+async function disableNotifications(){
+  saveLocal('notif_pref','off');
+  NOTIF.permissionGranted=false;
+  try { await unregisterPushDevice(); }
+  catch(e){ audit('PUSH_UNSUBSCRIBE_FAILED',{message:String(e&&e.message||e).slice(0,200), on:'toggle'}); }
+  renderNotifSettings();
+}
+// Remove this device's push subscription for the signed-in person: the row in
+// rf_push_subscriptions (RLS: own rows only) and the browser subscription.
+async function unregisterPushDevice(){
+  if(!pushSupported()) return;
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.getSubscription();
+  if(!sub) return;
+  if(ST.session?.access_token){
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rf_push_subscriptions?endpoint=eq.${encodeURIComponent(sub.endpoint)}`,{method:'DELETE',headers:SB_GET_HDR()}));
+    if(!r.ok) throw new Error('subscription delete failed ('+r.status+')');
+  }
+  await sub.unsubscribe();
+  audit('PUSH_UNSUBSCRIBED',{endpoint_host:(sub.endpoint||'').split('/')[2]||'unknown'});
+}
+// Bishop-only: whether admins also get alerts for DMs sent to the bishop.
+// The database enforces it too — rf_network_config.dm_notify_admins is
+// writable only with the strict bishop role.
+async function setDmNotifyAdmins(enabled, box){
+  const err=$('dm-admins-err');
+  if(err) err.textContent='';
+  try {
+    await sbUpsert('rf_network_config',{key:'dm_notify_admins', value: enabled?'true':'false'},'key');
+    C.dmNotifyAdmins=enabled;
+    audit('DM_NOTIFY_ADMINS_SET',{enabled});
+  } catch(e){
+    box.checked=!enabled;
+    if(err) err.textContent='Could not save: '+(e&&e.message||e);
+    audit('DM_NOTIFY_ADMINS_SET_FAILED',{message:String(e&&e.message||e).slice(0,200)});
   }
 }
+function renderNotifSettings(){
+  const st=notifStatus();
+  const label={on:'On for this device', off:'Off for this device', blocked:'Blocked in this browser', install:'Add to Home Screen first', unsupported:'Not available in this browser'}[st];
+  const help={
+    on:"You'll get alerts for new messages and updates, even when the app is closed.",
+    off:'Turn on to get alerts for new messages and updates when the app is closed.',
+    blocked:"Notifications are blocked for this site. Allow them in your browser's site settings, then come back here.",
+    install:'On iPhone and iPad, tap Share, then Add to Home Screen, and open the app from your home screen.',
+    unsupported:'This browser cannot receive notifications. Chrome, Edge, Firefox and Safari can.'
+  }[st];
+  const btn = st==='on' ? '<button class="tnav-btn" onclick="disableNotifications()">Turn off</button>'
+            : st==='off' ? '<button class="tnav-btn" onclick="enableNotifications()">Turn on</button>'
+            : st==='install' ? '<button class="tnav-btn" onclick="showIosInstallHint()">Show me how</button>' : '';
+  const bishopOpt = isBishop() ? `
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12px;color:var(--frost);line-height:1.5;cursor:pointer">
+      <input type="checkbox" ${C.dmNotifyAdmins?'checked':''} onchange="setDmNotifyAdmins(this.checked,this)" style="margin-top:2px">
+      <span>Also notify admins about messages sent to me</span>
+    </label>
+    <div id="dm-admins-err" style="font-size:11px;color:var(--flame);margin-top:4px"></div>` : '';
+  document.querySelectorAll('.notif-settings').forEach(el=>{
+    el.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-size:13px;color:var(--frost);font-weight:500">🔔 ${esc(label)}</div>
+        ${btn}
+      </div>
+      <div style="font-size:11px;color:var(--mist);line-height:1.5;margin-top:6px">${esc(help)}</div>
+      ${bishopOpt}`;
+  });
+}
+// One gentle, dismissible invitation for people who have never chosen.
+function maybeShowNotifBanner(){
+  if(notifPref()!==null || loadLocal('notif_banner_dismissed')) return;
+  const st=notifStatus();
+  if(st!=='off' && st!=='install') return;
+  if($('notif-banner')) return;
+  const b=document.createElement('div');
+  b.id='notif-banner';
+  b.style.cssText='position:fixed;left:12px;right:12px;bottom:80px;z-index:10000;background:var(--ink2);border:1px solid var(--gold);border-radius:var(--rm);padding:14px 16px;color:var(--frost);font-size:13px;line-height:1.5;display:flex;flex-direction:column;gap:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);font-family:"DM Sans",sans-serif;max-width:420px;margin:0 auto';
+  b.innerHTML=`
+    <div style="font-family:'Cormorant Garamond',serif;font-size:16px;color:var(--gold)">🔔 Turn on notifications?</div>
+    <div>Get an alert when you receive a message or a new update is posted. You can change this anytime in Settings.</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="tnav-btn" onclick="dismissNotifBanner()">Not now</button>
+      <button class="tnav-btn" style="background:var(--gold);color:var(--ink)" onclick="enableNotifications()">Turn on</button>
+    </div>`;
+  document.body.appendChild(b);
+}
+function hideNotifBanner(){ const b=$('notif-banner'); if(b) b.remove(); }
+function dismissNotifBanner(){ saveLocal('notif_banner_dismissed',true); hideNotifBanner(); }
+
 function fireOSNotification(title, body, icon){
   if(!NOTIF.permissionGranted) return;
   if(document.visibilityState==='visible') return; // only when tab not focused
@@ -5327,10 +5447,13 @@ function initNotifPolling(){
   NOTIF.unreadCount=NOTIF.items.filter(x=>x.unread).length;
   NOTIF.lastSeen=loadLocal('notif_last_seen')||{};
   updateNotifBadges();
-  // Request browser notification permission after first user interaction
+  // Someone who granted permission under the old ask-on-first-tap flow has no
+  // stored preference yet — they already said yes, so record it as 'on'.
+  if(notifPref()===null && pushSupported() && Notification.permission==='granted') saveLocal('notif_pref','on');
+  if(notifStatus()==='on'){ NOTIF.permissionGranted=true; subscribeToPush(); }
+  else maybeShowNotifBanner();
+  // Unlock the audio context on first interaction
   document.addEventListener('click',function onFirstClick(){
-    requestNotifPermission();
-    // Unlock audio context on first interaction
     if(NOTIF.audioCtx&&NOTIF.audioCtx.state==='suspended') NOTIF.audioCtx.resume();
     document.removeEventListener('click',onFirstClick);
   },{once:true});
@@ -5348,13 +5471,17 @@ function initNotifPolling(){
 async function pollForNotifications(){
   if(!ST.session) return;
   const isBishop=ST.session.role==='bishop';
+  const isAdminUser=ST.session.role==='admin';
+  const isDash=isBishop||isAdminUser;
   const uid=ST.session.userId;
   try {
-    // DMs — check for new messages
-    const dmFilter=isBishop
+    // DMs. The bishop's inbox notifies the bishop, and admins only when the
+    // bishop has chosen that (dm_notify_admins) — the same rule push follows.
+    const watchInbox=isBishop||(isAdminUser&&C.dmNotifyAdmins);
+    const dmFilter=watchInbox
       ? {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'1','sender_id':'neq.bishop'}
       : {select:'id,sender_id,message_text,created_at',order:'created_at.desc',limit:'1','recipient_id':'eq.'+uid,'sender_id':'eq.bishop'};
-    const dms=await sbS('rf_direct_messages',dmFilter);
+    const dms=(isDash&&!watchInbox)?[]:await sbS('rf_direct_messages',dmFilter);
     if(dms.length){
       const last=dms[0];
       const lastTs=NOTIF.lastSeen.dm||'';
@@ -5363,21 +5490,22 @@ async function pollForNotifications(){
         if(lastTs){ // don't notify on first load
           // sender_id is text (it also holds the literal 'bishop'), so there is
           // no FK for PostgREST to embed through — resolve the name client-side.
-          const sender=isBishop?(ST.allPastors.find(p=>p.id===last.sender_id)?.full_name||'A pastor'):'Bishop '+C.bishopName.split(' ').pop();
-          addNotification('✉️','New message from '+sender, last.message_text, isBishop?null:'s-dm');
+          const sender=watchInbox?(ST.allPastors.find(p=>p.id===last.sender_id)?.full_name||'A pastor'):'Bishop '+C.bishopName.split(' ').pop();
+          addNotification('✉️','New message from '+sender, last.message_text, watchInbox?null:'s-dm');
         }
       }
     }
 
-    // Prayer requests — new ones
-    const prayers=await sbS('rf_prayer_requests',{select:'id,request_text,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'1'});
+    // Prayer requests — new ones. Not for admins: prayer requests are private
+    // to pastors and the bishop (the Prayer Wall tab is bishop-only).
+    const prayers=isAdminUser?[]:await sbS('rf_prayer_requests',{select:'id,request_text,created_at,rf_pastors:pastor_id(full_name)',status:'eq.active',order:'created_at.desc',limit:'1'});
     if(prayers.length){
       const last=prayers[0];
       const lastTs=NOTIF.lastSeen.prayer||'';
       if(last.created_at>lastTs){
         NOTIF.lastSeen.prayer=last.created_at;
         if(lastTs){
-          addNotification('🙏','New prayer request', (last.rf_pastors?.full_name||'A pastor')+' shared a prayer request', isBishop?null:'s-prayer');
+          addNotification('🙏','New prayer request', (last.rf_pastors?.full_name||'A pastor')+' shared a prayer request', isDash?null:'s-prayer');
         }
       }
     }
@@ -5390,13 +5518,13 @@ async function pollForNotifications(){
       if(last.created_at>lastTs){
         NOTIF.lastSeen.announcement=last.created_at;
         if(lastTs){
-          addNotification('📢','New announcement', last.title||last.body||'New update posted', isBishop?null:'s-ann');
+          addNotification('📢','New announcement', last.title||last.body||'New update posted', isDash?null:'s-ann');
         }
       }
     }
 
     // Bishop blasts — for pastors only
-    if(!isBishop){
+    if(!isDash){
       const blasts=await sbS('rf_bishop_messages',{select:'id,message_text,sent_at',order:'sent_at.desc',limit:'1'});
       if(blasts.length){
         const last=blasts[0];
@@ -5466,18 +5594,19 @@ async function subscribeToPush(){
       });
     }
     if(!sub) return;
-    // Save subscription to Supabase. RLS gate is `user_id = auth.uid()`,
-    // so the column must hold the auth.users id, NOT the rf_pastors profile id.
+    // Register this device to the signed-in person. register_push_device()
+    // assigns the endpoint to auth.uid() and removes any previous holder, so a
+    // shared device never delivers one person's notifications to another.
     const subJson=sub.toJSON();
-    const userId=ST.session?.authUserId;
-    if(!userId) return;
-    await sbUpsert('rf_push_subscriptions',{
-      user_id:userId,
-      endpoint:subJson.endpoint,
-      p256dh:subJson.keys?.p256dh||'',
-      auth:subJson.keys?.auth||'',
-      updated_at:new Date().toISOString()
-    },'user_id,endpoint').catch(()=>{});
+    if(!ST.session?.access_token) return;
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/register_push_device`,{
+      method:'POST', headers:SB_HDR(),
+      body:JSON.stringify({p_endpoint:subJson.endpoint, p_p256dh:subJson.keys?.p256dh||'', p_auth:subJson.keys?.auth||''}),
+    }));
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err.message || 'device registration failed ('+r.status+')');
+    }
     audit('PUSH_SUBSCRIBED',{endpoint_host: (subJson.endpoint||'').split('/')[2] || 'unknown'});
   } catch(e){
     // Subscribe can throw on iOS PWA if user denies, on Android if the device
