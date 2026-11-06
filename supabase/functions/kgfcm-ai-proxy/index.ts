@@ -6,19 +6,22 @@
 // server-side audit() — never console.* (SEC-6).
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
 import { rateLimit } from "../_shared/rate_limit.ts";
 
 const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.50.5 hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
+// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
 const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const ANTHROPIC_API_KEY  = Deno.env.get("ANTHROPIC_API_KEY")         ?? "";
-const MODEL              = "claude-haiku-4-5-20251001";
-const MAX_TOKENS_DEFAULT = 512;
-const MAX_TOKENS_BY_TYPE: Record<string, number> = { outreach: 1500 };
+const MODEL              = "claude-haiku-5-5";
+const EFFORT             = "medium";
+// Haiku 5.5 thinks by default and its thinking counts toward max_tokens,
+// so these caps leave room for thinking plus the JSON answer.
+const MAX_TOKENS_DEFAULT = 4096;
+const MAX_TOKENS_BY_TYPE: Record<string, number> = { outreach: 8192 };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(req) });
@@ -62,6 +65,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: maxTokens,
+        output_config: { effort: EFFORT },
         system: systemPrompt,
         messages: [{ role: "user", content: String(prompt) }],
       }),
@@ -76,7 +80,19 @@ Deno.serve(async (req: Request) => {
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text ?? "";
+    // A refusal or a cut-off answer is not usable output — fail visibly.
+    if (data.stop_reason !== "end_turn") {
+      await audit(supa, "AI_INCOMPLETE_RESPONSE", {
+        actor_id: user.id, ip_address: ip, call_type: callType,
+        stop_reason: data.stop_reason, refusal_category: data.stop_details?.category ?? null,
+      });
+      return jsonResponse(req, { error: "AI service unavailable" }, 502);
+    }
+    // The response can begin with thinking blocks; the answer is the text blocks.
+    const text = (data.content ?? [])
+      .filter((b: { type: string }) => b.type === "text")
+      .map((b: { text: string }) => b.text)
+      .join("");
     let result: unknown;
     try { result = JSON.parse(text); } catch { result = text; }
 

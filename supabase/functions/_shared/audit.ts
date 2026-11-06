@@ -2,7 +2,7 @@
 // running under service_role call this. Every error path in every function
 // MUST go through audit() — never through console.* (SEC-6).
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 
 export async function audit(
   supa: SupabaseClient,

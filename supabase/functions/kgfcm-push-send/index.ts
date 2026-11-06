@@ -9,7 +9,7 @@
 // CORS locked via shared module. console.error → audit().
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
@@ -18,7 +18,7 @@ const VAPID_PUBLIC_KEY      = Deno.env.get("VAPID_PUBLIC_KEY")          ?? "";
 const VAPID_PRIVATE_KEY     = Deno.env.get("VAPID_PRIVATE_KEY")         ?? "";
 const VAPID_SUBJECT         = Deno.env.get("VAPID_SUBJECT")             ?? "mailto:kgfcm2023@gmail.com";
 const SUPABASE_URL          = Deno.env.get("SUPABASE_URL")              ?? "";
-// JWT-format service role first: supabase-js 2.50.5 hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
+// JWT-format service role first: supabase-js 2.119.0 still hands sb_secret_* through to PostgREST as-is and PostgREST rejects non-JWT bearers with 401.
 const SERVICE_ROLE_KEY      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 
 Deno.serve(async (req: Request) => {
@@ -129,7 +129,7 @@ async function sendWebPush(
       TTL:                "86400",
       Urgency:            "normal",
     },
-    body: encrypted,
+    body: bs(encrypted),
   });
   return { ok: res.ok || res.status === 201, status: res.status };
 }

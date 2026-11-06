@@ -17,7 +17,7 @@
 //
 // Bishop-only (verify_jwt: true; rejects non-bishop JWT). Loads
 // the last 14 days of devotions, builds an avoid list, generates
-// a fresh devotion via Claude Haiku 4.5, then runs a post-
+// a fresh devotion via Claude Haiku 5.5, then runs a post-
 // generation review pass that scores the output against an
 // explicit NO list. Retries up to 2x on review failure. Inserts
 // or upserts a status='draft' row in rf_devotions for bishop
@@ -26,7 +26,7 @@
 // All errors and outcomes audited.
 // ============================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
 import { audit } from "../_shared/audit.ts";
@@ -40,7 +40,8 @@ const SUPABASE_URL       = Deno.env.get("SUPABASE_URL")              ?? "";
 // decode claims directly and trust the role/app_metadata they carry.
 const SERVICE_ROLE_KEY   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SB_SECRET_KEY") ?? "";
 const ANTHROPIC_API_KEY  = Deno.env.get("ANTHROPIC_API_KEY")         ?? "";
-const MODEL              = "claude-haiku-4-5-20251001";
+const MODEL              = "claude-haiku-5-5";
+const EFFORT             = "medium";
 const MAX_RETRIES        = 2;
 
 interface DevotionDraft {
@@ -231,6 +232,7 @@ function callAnthropic(systemPrompt: string, userPrompt: string, maxTokens: numb
     body: JSON.stringify({
       model:      MODEL,
       max_tokens: maxTokens,
+      output_config: { effort: EFFORT },
       system:     systemPrompt,
       messages:   [{ role: "user", content: userPrompt }],
     }),
@@ -240,8 +242,16 @@ function callAnthropic(systemPrompt: string, userPrompt: string, maxTokens: numb
       throw new Error(`Anthropic ${res.status}: ${errText.slice(0, 280)}`);
     }
     const data = await res.json();
-    const text = data.content?.[0]?.text ?? "";
-    return text as string;
+    // A refusal or a cut-off answer is not usable output — throw so the
+    // caller audits it and retries.
+    if (data.stop_reason !== "end_turn") {
+      throw new Error(`Anthropic stop_reason=${data.stop_reason}${data.stop_details?.category ? ` category=${data.stop_details.category}` : ""}`);
+    }
+    // The response can begin with thinking blocks; the answer is the text blocks.
+    return (data.content ?? [])
+      .filter((b: { type: string }) => b.type === "text")
+      .map((b: { text: string }) => b.text)
+      .join("");
   });
 }
 
@@ -268,7 +278,7 @@ async function generateDevotion(
     `Respond with valid JSON only — no markdown fences, no commentary, no preamble.`,
   ].join("\n");
 
-  const raw = await callAnthropic(SYSTEM_PROMPT, userPrompt, 1400);
+  const raw = await callAnthropic(SYSTEM_PROMPT, userPrompt, 8000);
   const cleaned = raw.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
   let parsed: unknown;
   try {
@@ -336,7 +346,7 @@ Prophetic call: ${d.prophetic_call}
 Respond with valid JSON only:
 {"passes": true|false, "manipulation": 0-5, "prosperity": 0-5, "nationalism": 0-5, "dopamine": 0-5, "hate_speech": 0-5, "heresy": 0-5, "hierarchy_abuse": 0-5, "notes": "one-sentence rationale"}`;
 
-  const reviewRaw = await callAnthropic(REVIEWER_SYSTEM_PROMPT, reviewPrompt, 500);
+  const reviewRaw = await callAnthropic(REVIEWER_SYSTEM_PROMPT, reviewPrompt, 4000);
   const cleaned = reviewRaw.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
   try {
     const parsed = JSON.parse(cleaned) as ReviewResult;

@@ -1,6 +1,6 @@
 // Per-email and per-IP rate limiter backed by rf_reset_attempts.
 
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.50.5";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 import { hashIdentifier } from "./audit.ts";
 
 const PER_EMAIL_LIMIT = 5;
