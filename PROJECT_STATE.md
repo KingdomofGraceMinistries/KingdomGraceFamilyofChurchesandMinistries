@@ -156,9 +156,9 @@ fail-closed insert turns every AI call into a 500. Pushed via CLI
 (ledger 26 ↔ 26), then functions. Five new tests in `_shared/test_shared.ts`,
 including 30 pastors × (one mistype + success) from one IP — which the old
 code fails at pastor 11. Verified live: an unknown-account login recorded
-one `kind=login` row and audited `LOGIN_FAILED`, not an error. Versions
-moved by 2 on this deploy (`kgfcm-ai-proxy` 18 → 20); `ezbr_sha256`
-changed only on the six functions that import the limiter.
+one `kind=login` row and audited `LOGIN_FAILED`, not an error. `ezbr_sha256`
+changed only on the six functions that import the limiter (versions move
+by 2 per CLI deploy — see K).
 
 ### I. Vendor admin account — a recorded exception, remove at handover
 
@@ -196,7 +196,59 @@ to `kgfcm-admin-pin-issue` with `{pastor_id}`. Verify each by
 `net._http_response` and the `ADMIN_PIN_ISSUED` audit row. After a pastor's
 first PIN login creates their auth user, magic-link sign-in works too.
 
-### J. Left open
+### J. Admin → bishop escalation closed (migration `20261106180000`)
+
+`is_bishop()` is true for **admins too** — it means "dashboard user", and
+most policies use it that way correctly. Two did not:
+
+- `rf_network_config`: any admin could **read** `bishop_pin_bcrypt`,
+  `vapid_private_key`, `resend_api_key`, and **write** `bishop_email` +
+  `bishop_pin_bcrypt` — re-point the bishop login at their own email with a
+  PIN they chose. That also voided `create_admin`'s bishop-only rule.
+- `rf_admins` (`admins_bishop_all`): any admin could lock/unlock admins,
+  the bishop's row included, and change anyone's permissions.
+
+New `is_strict_bishop()` (role `bishop` only). Credentials: no client
+session reads or writes them, bishop included — the client never touched
+them (checked) and edge functions use the service role. `bishop_email` and
+`dm_notify_admins`: strict bishop. Other config keys: bishop or admin, as
+before. `rf_admins`: admins read, only the bishop writes. Verified with
+simulated admin / bishop / pastor sessions in rolled-back transactions.
+
+**Rule for future policies: `is_bishop()` means bishop-or-admin. Use
+`is_strict_bishop()` wherever only the bishop is meant.**
+
+### K. Push notifications — they were not reaching anyone
+
+Devices register under the **auth.users id**; `kgfcm-push-notify`
+addressed **rf_pastors profile ids** and the literal `'bishop'`. No pastor
+or admin ever received a push, and the bishop's current devices did not
+either — only two April rows stored under `'bishop'`. Now:
+
+- Recipients resolve to auth ids (pastors via `rf_pastors.auth_user_id`,
+  bishop/admins via `rf_admins`), poster excluded by auth id.
+- **Admins never get prayer notifications** (push or in-app) — prayer
+  requests are private to pastors and the bishop; the Prayer Wall tab is
+  bishop-only.
+- **DMs to the bishop reach admins only if the bishop turns it on**
+  (`dm_notify_admins`, default `false`, strict-bishop key; checkbox in his
+  notification drawer). Push and the in-app poll follow the same rule.
+- **One person per device** (migration `20261106190000`): endpoints are
+  unique; `register_push_device()` (definer, `authenticated` only) hands a
+  device to whoever last turned notifications on there. Two live devices
+  were registered to 2–3 people each; the migration kept the newest holder
+  of each and dropped the `'bishop'` rows. **Sign-out now removes the
+  device's row**, so a shared phone stops receiving the previous person's
+  alerts.
+- The app no longer prompts on the first tap. A **"Notifications on this
+  device"** switch (pastor Settings and the notification drawer) shows
+  On / Off / Blocked / Add to Home Screen first, plus one dismissible
+  banner for people who never chose. Existing grants were kept as "on".
+
+Versions move by **2 per CLI deploy** (seen twice today) — that is the CLI,
+not a second deploy.
+
+### L. Left open
 
 - **Live AI proxy test** — needs a signed-in session; to be run as the test
   pastor through the site.
