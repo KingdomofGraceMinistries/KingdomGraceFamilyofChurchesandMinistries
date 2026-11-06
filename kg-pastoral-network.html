@@ -795,7 +795,12 @@ async function sbU(table,filter,data){
   return r.json();
 }
 async function sbD(table,filter){
-  await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'DELETE',headers:SB_GET_HDR()}));
+  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'DELETE',headers:SB_GET_HDR()}));
+  if(!r.ok){
+    let msg = 'Delete failed ('+r.status+')';
+    try { const d = await r.json(); msg = d?.message || d?.error || msg; } catch(_){}
+    throw new Error(msg);
+  }
 }
 async function sbS(table,params){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${new URLSearchParams(params)}`,{headers:SB_GET_HDR()}));
@@ -2130,9 +2135,9 @@ async function declareFast(){
     return;
   }
   try {
-    await sbI('rf_fasts',data);
+    const [fast]=await sbI('rf_fasts',data);
     audit('FAST_DECLARED',{table:'rf_fasts',title:data.title});
-    firePushNotify('blast',{message_text:'📣 The Bishop has declared a fast: '+data.title}).catch(()=>{});
+    firePushNotify('fast',fast?.id);
     loadFasts();
   } catch(e){ showErr('fast-err','Could not declare. Try again.'); if(btn){ btn.disabled=false; btn.textContent='Declare fast →'; } }
 }
@@ -2416,9 +2421,9 @@ async function postCalendarEvent(){
     return;
   }
   try {
-    await sbI('rf_events',data);
+    const [ev]=await sbI('rf_events',data);
     audit('EVENT_CREATED',{table:'rf_events',title:data.title});
-    firePushNotify('blast',{message_text:'📅 New event: '+data.title+' on '+data.event_date}).catch(()=>{});
+    firePushNotify('event',ev?.id);
     ST.selectedEventDate = data.event_date;
     // jump calendar to that month
     const d = new Date(data.event_date+'T00:00');
@@ -2652,9 +2657,9 @@ async function submitPrayer(){
   const text=ta?.value.trim(); if(!text){showErr('prayer-err','Please enter your request.');return;}
   btn.disabled=true; btn.textContent='Posting...';
   try {
-    await sbI('rf_prayer_requests',{pastor_id:ST.session.userId,request_text:text,status:'active',prayed_count:0});
+    const [prayer]=await sbI('rf_prayer_requests',{pastor_id:ST.session.userId,request_text:text,status:'active',prayed_count:0});
     audit('PRAYER_POSTED',{table:'rf_prayer_requests'});
-    firePushNotify('prayer',{pastor_name:ST.session.name});
+    firePushNotify('prayer',prayer?.id);
     ta.value=''; hideErr('prayer-err'); loadPrayer();
   } catch(e){showErr('prayer-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post prayer request →';
@@ -2692,9 +2697,9 @@ async function submitWin(){
       const path=`${ST.session.userId}/${Date.now()}.${ext}`;
       imageUrl=await storageUpload('wins',path,winPhotoFile);
     }
-    await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text||'',fire_count:0,glory_count:0,image_url:imageUrl||null});
+    const [win]=await sbI('rf_wins',{pastor_id:ST.session.userId,win_text:text||'',fire_count:0,glory_count:0,image_url:imageUrl||null});
     audit('WIN_POSTED',{table:'rf_wins',hasImage:!!imageUrl});
-    firePushNotify('win',{pastor_name:ST.session.name});
+    firePushNotify('win',win?.id);
     ta.value=''; clearWinPhoto(); hideErr('win-err'); loadWins();
   } catch(e){showErr('win-err','Could not post.');}
   btn.disabled=false; btn.textContent='Post your win →';
@@ -2862,9 +2867,9 @@ async function sendDM(){
   const text=inp?.value.trim(); if(!text) return;
   btn.disabled=true;
   try {
-    await sbI('rf_direct_messages',{sender_id:ST.session.userId,recipient_id:'bishop',message_text:text,is_read:false});
+    const [dm]=await sbI('rf_direct_messages',{sender_id:ST.session.userId,recipient_id:'bishop',message_text:text,is_read:false});
     audit('DM_SENT',{table:'rf_direct_messages',recipient:'bishop'});
-    firePushNotify('dm',{recipient_id:'bishop',sender_name:ST.session.name,message_text:text});
+    firePushNotify('dm',dm?.id);
     inp.value=''; loadDM();
   } catch(e){ showErr('dm-err','Could not send message. Please try again.'); }
   btn.disabled=false;
@@ -3107,7 +3112,7 @@ async function submitAnnouncement(){
       const path=`${ST.session.userId}/${Date.now()}.${ext}`;
       imageUrl=await storageUpload('announcements',path,annPhotoFile);
     }
-    await sbI('rf_announcements',{
+    const [ann]=await sbI('rf_announcements',{
       pastor_id:ST.session.userId,
       title:$('ann-title')?.value.trim()||'',
       body:text||'',
@@ -3116,7 +3121,7 @@ async function submitAnnouncement(){
       status:'active'
     });
     audit('ANNOUNCEMENT_POSTED',{table:'rf_announcements',hasImage:!!imageUrl});
-    firePushNotify('announcement',{title:$('ann-title')?.value.trim()||'',body:text||''});
+    firePushNotify('announcement',ann?.id);
     if(ta) ta.value='';
     if($('ann-title')) $('ann-title').value='';
     annPhotoData=null; annPhotoFile=null;
@@ -3254,7 +3259,7 @@ async function submitBishopAnn(){
       const ext=bAnnPhotoFile.name.split('.').pop()||'jpg';
       imageUrl=await storageUpload('announcements',`bishop/${Date.now()}.${ext}`,bAnnPhotoFile);
     }
-    await sbI('rf_announcements',{
+    const [ann]=await sbI('rf_announcements',{
       pastor_id:'bishop',
       title:$('b-ann-title')?.value.trim()||'',
       body:text||'',
@@ -3262,7 +3267,7 @@ async function submitBishopAnn(){
       is_pinned:false,
       status:'active'
     });
-    firePushNotify('announcement',{title:$('b-ann-title')?.value.trim()||'',body:text||''});
+    firePushNotify('announcement',ann?.id);
     if(ta) ta.value='';
     if($('b-ann-title')) $('b-ann-title').value='';
     bAnnPhotoFile=null;
@@ -3893,9 +3898,9 @@ async function sendBishopReply(pastorId){
   const inp=$('b-reply-input'); if(!inp) return;
   const text=inp.value.trim(); if(!text) return;
   try {
-    await sbI('rf_direct_messages',{sender_id:'bishop',recipient_id:pastorId,message_text:text,is_read:false});
+    const [dm]=await sbI('rf_direct_messages',{sender_id:'bishop',recipient_id:pastorId,message_text:text,is_read:false});
     audit('BISHOP_DM_SENT',{table:'rf_direct_messages',targetId:pastorId});
-    firePushNotify('dm',{recipient_id:pastorId,sender_name:C.bishopName,message_text:text});
+    firePushNotify('dm',dm?.id);
     inp.value=''; openBishopDmThread(pastorId);
   } catch(e){ inp.placeholder='Could not send — try again'; }
 }
@@ -3972,9 +3977,9 @@ async function sendBishopBlast(){
       audioUrl = await storageUpload('voice', filename, BLAST_REC.blob);
       audioDur = BLAST_REC.duration || null;
     }
-    await sbI('rf_bishop_messages',{message_text:text||null,audio_url:audioUrl,audio_duration_seconds:audioDur,type:'blast',sent_at:new Date().toISOString()});
+    const [blast]=await sbI('rf_bishop_messages',{message_text:text||null,audio_url:audioUrl,audio_duration_seconds:audioDur,type:'blast',sent_at:new Date().toISOString()});
     audit('BISHOP_BLAST_SENT',{table:'rf_bishop_messages',hasAudio:!!audioUrl});
-    firePushNotify('blast',{message_text:text||'(voice message)'});
+    firePushNotify('blast',blast?.id);
     ta.value=''; clearBlastRecording(); showOk('b-blast-ok','Sent to all pastors.');
   } catch(e){ showErr('b-blast-err','Could not send.'); }
   btn.disabled=false; btn.textContent='Send to all →';
@@ -5638,14 +5643,20 @@ function showIosInstallHint(){
 }
 
 // ── FIRE PUSH NOTIFY: call Edge Function when content is created ──
-async function firePushNotify(type, data){
+// Sends only the id of the row just saved: kgfcm-push-notify loads it, checks
+// the caller wrote it, and builds the notification text from the database.
+// Fire-and-forget for the person posting, but a failure is audited rather
+// than dropped.
+async function firePushNotify(type, id){
+  if(!id) return;
   try {
-    await fetch(`${C.supabaseUrl}/functions/v1/${C.pushNotifyFn}`,{
+    const r=await fetch(`${C.supabaseUrl}/functions/v1/${C.pushNotifyFn}`,{
       method:'POST',
       headers:SB_HDR(),
-      body:JSON.stringify({type,data})
+      body:JSON.stringify({type,id})
     });
-  } catch(e){ /* push notify fire-and-forget */ }
+    if(!r.ok) audit('PUSH_NOTIFY_CALL_FAILED',{notify_type:type,status:r.status});
+  } catch(e){ audit('PUSH_NOTIFY_CALL_FAILED',{notify_type:type,message:String(e&&e.message||e).slice(0,200)}); }
 }
 
 // ============================================================

@@ -1,10 +1,12 @@
 // ============================================================
 // kgfcm-push-send — Web Push sender (RFC 8291 aes128gcm + VAPID).
 //
-// Called server-to-server from kgfcm-push-notify and kgfcm-checkin-remind
-// using the project's service_role JWT (which validates against
-// verify_jwt:true). Also callable by a bishop JWT for direct sends.
-// Anonymous and non-bishop user JWTs are rejected to prevent push spam.
+// Server-to-server only: kgfcm-push-notify, kgfcm-checkin-remind, and
+// SQL via pg_net, all presenting a service_role JWT. No user JWT is
+// accepted — not even the bishop's. The app never calls this directly;
+// it goes through kgfcm-push-notify, which builds the text from the
+// database. A user-callable sender would let its caller push any text to
+// anyone.
 //
 // CORS locked via shared module. console.error → audit().
 // ============================================================
@@ -32,18 +34,17 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Authorization: service_role (server-to-server) or bishop JWT only.
+  // Authorization: service_role only. The Functions Gateway has already
+  // verified the JWT signature (verify_jwt: true), so the role claim can be
+  // read directly — the same check kgfcm-admin-pin-issue and the devotion
+  // function use. Comparing the token text to this function's own key
+  // instead refused valid service tokens, such as the vault copy pg_net uses.
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!jwt) return jsonResponse(req, { error: "Missing JWT" }, 401);
-  const isServiceRole = jwt === SERVICE_ROLE_KEY;
-  if (!isServiceRole) {
-    const { data: userData, error: userErr } = await supa.auth.getUser(jwt);
-    if (userErr || !userData.user) return jsonResponse(req, { error: "Invalid session" }, 401);
-    const role = userData.user.app_metadata?.role;
-    if (role !== "bishop" && role !== "admin") {
-      await audit(supa, "PUSH_SEND_DENIED", { actor_id: userData.user.id, role });
-      return jsonResponse(req, { error: "Forbidden" }, 403);
-    }
+  const claims = decodeJwtClaims(jwt);
+  if (claims?.role !== "service_role") {
+    await audit(supa, "PUSH_SEND_DENIED", { actor_id: typeof claims?.sub === "string" ? claims.sub : "unknown", role: claims?.role ?? null });
+    return jsonResponse(req, { error: "Forbidden" }, 403);
   }
 
   try {
@@ -107,6 +108,21 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(req, { error: "Internal error" }, 500);
   }
 });
+
+// Read the claims segment of a JWT. Safe without re-verifying the signature
+// because this function is deployed with verify_jwt: true — the gateway has
+// already validated signature and expiry before the request reaches here.
+function decodeJwtClaims(jwt: string): Record<string, unknown> | null {
+  try {
+    const parts = jwt.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 // ============================================================
 // WEB PUSH: RFC 8291 + VAPID (RFC 8292) — unchanged from prior version.
