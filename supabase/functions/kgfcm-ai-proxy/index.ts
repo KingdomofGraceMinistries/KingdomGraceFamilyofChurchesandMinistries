@@ -39,15 +39,16 @@ Deno.serve(async (req: Request) => {
   if (userErr || !userData.user) return jsonResponse(req, { error: "Invalid session" }, 401);
   const user = userData.user;
 
-  // Rate-limit AI calls per user — 30/hour is generous; the AI proxy is the
-  // most expensive endpoint, both in latency and in Anthropic billing.
-  const rl = await rateLimit({ supa, email: user.email ?? user.id, ip, kind: "login" });
-  if (rl.limited) {
-    await audit(supa, "AI_RATE_LIMITED", { actor_id: user.id, ip_address: ip });
-    return jsonResponse(req, { error: "Too many requests. Please slow down." }, 429);
-  }
-
   try {
+    // Rate-limit AI calls per user under their own "ai" kind (LIMITS in
+    // _shared/rate_limit.ts), so AI use never spends the PIN-login budget.
+    // The AI proxy is the most expensive endpoint, in latency and billing.
+    const rl = await rateLimit({ supa, email: user.id, ip, kind: "ai" });
+    if (rl.limited) {
+      await audit(supa, "AI_RATE_LIMITED", { actor_id: user.id, ip_address: ip });
+      return jsonResponse(req, { error: "Too many requests. Please slow down." }, 429);
+    }
+
     const { callType, prompt } = await req.json();
     if (!prompt || !callType) {
       return jsonResponse(req, { error: "Missing callType or prompt" }, 400);

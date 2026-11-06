@@ -4,7 +4,7 @@
 
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@^1.0.19";
 import { hashIdentifier } from "./audit.ts";
-import { generateCode, hashCode, padTo } from "./rate_limit.ts";
+import { generateCode, hashCode, LIMITS, padTo, rateLimit } from "./rate_limit.ts";
 
 Deno.test("hashIdentifier produces 64-hex SHA-256 and is deterministic", async () => {
   const a = await hashIdentifier("Bishop@KGFCM.LOCAL");
@@ -96,4 +96,84 @@ Deno.test("NAME_RE rejects empty, too-short, too-long, or non-text", () => {
   assert(!NAME_RE.test("a".repeat(81)));
   assert(!NAME_RE.test("<script>"));
   assert(!NAME_RE.test("12345"));
+});
+
+// ── rateLimit — in-memory stand-in for rf_reset_attempts ──
+// Implements only the query shapes rateLimit() uses: a filtered head count
+// and an insert. Rows carry created_at so the window filter is exercised.
+type AttemptRow = { email_hash: string; ip_hash: string; kind: string; created_at: string };
+
+function fakeSupa(opts: { failInsert?: boolean; failCount?: boolean } = {}) {
+  const rows: AttemptRow[] = [];
+  const client = {
+    from(_table: string) {
+      return {
+        select(_cols: string, _o: unknown) {
+          const filters: Array<(r: AttemptRow) => boolean> = [];
+          const q = {
+            eq(col: keyof AttemptRow, val: string) { filters.push((r) => r[col] === val); return q; },
+            gte(col: keyof AttemptRow, val: string) { filters.push((r) => r[col] >= val); return q; },
+            then(resolve: (v: unknown) => void) {
+              resolve(opts.failCount
+                ? { count: null, error: { message: "boom" } }
+                : { count: rows.filter((r) => filters.every((f) => f(r))).length, error: null });
+            },
+          };
+          return q;
+        },
+        insert(row: Omit<AttemptRow, "created_at">) {
+          if (opts.failInsert) return Promise.resolve({ error: { message: "violates check constraint" } });
+          rows.push({ ...row, created_at: new Date().toISOString() });
+          return Promise.resolve({ error: null });
+        },
+      };
+    },
+  };
+  // deno-lint-ignore no-explicit-any
+  return client as any;
+}
+
+Deno.test("rateLimit — allows exactly perEmail attempts, then limits", async () => {
+  const supa = fakeSupa();
+  for (let i = 0; i < LIMITS.login.perEmail; i++) {
+    const r = await rateLimit({ supa, email: "p@x.org", ip: "1.1.1.1", kind: "login" });
+    assertEquals(r.limited, false, `attempt ${i + 1} allowed`);
+  }
+  const over = await rateLimit({ supa, email: "p@x.org", ip: "1.1.1.1", kind: "login" });
+  assertEquals(over.limited, true);
+});
+
+Deno.test("rateLimit — AI use never spends the login budget", async () => {
+  const supa = fakeSupa();
+  for (let i = 0; i < 10; i++) {
+    await rateLimit({ supa, email: "p@x.org", ip: "1.1.1.1", kind: "ai" });
+  }
+  const login = await rateLimit({ supa, email: "p@x.org", ip: "1.1.1.1", kind: "login" });
+  assertEquals(login.limited, false);
+});
+
+Deno.test("rateLimit — 30 pastors can sign in from one shared address", async () => {
+  const supa = fakeSupa();
+  for (let i = 0; i < 30; i++) {
+    // Each pastor mistypes once, then succeeds: 60 attempts from one IP.
+    await rateLimit({ supa, email: `pastor${i}@x.org`, ip: "203.0.113.7", kind: "login" });
+    const r = await rateLimit({ supa, email: `pastor${i}@x.org`, ip: "203.0.113.7", kind: "login" });
+    assertEquals(r.limited, false, `pastor ${i + 1} not locked out`);
+  }
+});
+
+Deno.test("rateLimit — fails closed when the attempt cannot be recorded", async () => {
+  let threw = false;
+  try {
+    await rateLimit({ supa: fakeSupa({ failInsert: true }), email: "p@x.org", ip: "1.1.1.1", kind: "ai" });
+  } catch { threw = true; }
+  assert(threw, "insert failure must throw, not silently leave the limit open");
+});
+
+Deno.test("rateLimit — fails closed when the count cannot be read", async () => {
+  let threw = false;
+  try {
+    await rateLimit({ supa: fakeSupa({ failCount: true }), email: "p@x.org", ip: "1.1.1.1", kind: "login" });
+  } catch { threw = true; }
+  assert(threw, "count failure must throw, not read as zero attempts");
 });
