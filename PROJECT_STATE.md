@@ -53,16 +53,80 @@ saved, so no bishop could see it.
   name, and it runs for pastors only. Ministry-photo names use
   `crypto.randomUUID()`.
 
-### C. Left open
+### C. Applied and verified the same day
 
-- **Migration not yet applied** — the CLI had no access token this session
-  (Codespaces rebuild; see 2026-09-08 §E). Until `db push`, pastor lists and
-  the admin "Me" screen still fail. Apply, then verify, then run a synthetic
-  pastor enrolment through credential upload and remove it.
-- The orphaned 2026-05-14 file in `credentials` belongs to the test pastor;
-  re-uploading from the profile now records a pointer. Not deleted.
+`20261118190000` is applied (ledger 31 ↔ 31). The deployed
+`update_my_admin_profile` body matches the file (whitespace-normalised MD5).
+An admin's save at 19:47 UTC wrote her profile and avatar.
+
+### D. Later the same session — sign-up, invites, sessions, storage
+
+Commits `0595146`, `dbd018a`, `caf9020`, `ebf0063`, `101b497`, plus
+migrations `20261118210000` and `20261118220000`.
+
+- **Sign-up did not require an invite** (`kgfcm-pin-register`). The token was
+  optional server-side; only the client insisted. Anyone POSTing directly
+  could create an active pastor. Never exploited — no `REGISTER_*` or
+  `PASTOR_REGISTERED` event existed. Now mandatory, claimed with one
+  `UPDATE … WHERE accepted_at IS NULL` (single use, race-safe), released if
+  sign-up fails, and an admin's email is refused.
+- **Invites are minted server-side.** `create_invite(p_name)` generates 32
+  random bytes, stores only the SHA-256 hex (`token_hash`; plaintext column
+  dropped — the table had never held a row), audits `INVITE_CREATED`, and
+  returns the token once. `authenticated` can no longer write `rf_invites`
+  and cannot read the hash.
+- **The share link was never visible.** `sendBishopInvite()` rendered the link
+  then re-rendered the whole Invites panel, wiping it. The table now refreshes
+  alone (`loadInviteList`). Same fix for Add a Pastor's confirmation.
+- **Invite links opened the saved session instead of sign-up.** `boot()` read
+  `?invite=` last; it now reads it first.
+- **"JWT expired" an hour after sign-in.** Tokens were refreshed only after a
+  failure, and Add a Pastor / Add Admin / Email PIN / storage / AI / devotion
+  generate / push notify bypassed even that. All now go through
+  `sbWithRetry`, which calls `ensureFreshSession()` first; refreshes are
+  coalesced (refresh tokens are single-use); a session that cannot be renewed
+  signs out with a message. `audit()` used to drop events once the token
+  lapsed — which is why the admin's failures were invisible — and now
+  refreshes first.
+- **Admins tab never loaded** (`select=*` on `rf_admins` hit `pin_bcrypt`).
+- **Photo picker died once a photo was shown** (`#av-file` lived inside the
+  re-rendered `#av-wrap`).
+- **Storage deletes in avatars / wins / announcements matched nothing.**
+  SEC-15 dropped all SELECT policies there, and Storage resolves a delete
+  through SELECT. `kg_buckets_owner_select` restores SELECT for the owner and
+  bishop/admins only — signed-out listing still returns `[]`, another pastor
+  sees 0. Update/delete policies moved from deprecated `owner` to `owner_id`
+  and `to authenticated`.
+
+**Synthetic enrolment, 2026-11-18 21:00 UTC — 20/20 passed** against
+production via the app's own calls: invite link sign-up; link reuse refused;
+PIN sign-in; profile load and save; credential PDF / JPEG / HEIC accepted;
+HEIC as `octet-stream` (the old client behaviour), HTML, and a 21 MB file
+rejected; upload into another folder refused; own scan opens, another
+pastor's does not; ministry photo; two avatar changes; check-in stamp; admin
+sees the pastor and scans. The pastor, its auth user, its files and the three
+Test Pastor invites were then removed. `rf_pastors` is back to the one
+deliberate test account (governance §4).
+
+**Where the admin really was:** the working admin today is the account added
+2026-08-14 (`6bbf6a97…`), not the 2026-11-06 one.
+
+### E. Left open
+
+- **The app never deletes superseded files.** Changing an avatar, or a bishop
+  removing a win/announcement, leaves the old object in storage. Deletes now
+  *work* (D above); nothing calls them for those buckets yet.
+- **Staff land in the pastor view on every load**; "View Dashboard" exists only
+  on Home. Operator to decide whether staff should open on the dashboard.
+- Deactivate the legacy `anon` / `service_role` keys — the post-switch
+  devotion cron has run green every day 2026-11-06 → 2026-11-18.
+- `kgfcm-checkin-remind` still unscheduled (product decision).
+- The 2026-05-14 orphan in `credentials` (test pastor) remains.
 - Supabase security advisor: leaked-password protection is off (Auth
   setting; this app signs in by PIN, so it has no effect today).
+- **Codespaces secret for `SUPABASE_ACCESS_TOKEN`** — this session's token
+  lives in the git-ignored `.env`, which a rebuild wipes. `core.hooksPath`
+  was also unset after the last rebuild and had to be re-set.
 
 ---
 
