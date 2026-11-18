@@ -734,7 +734,29 @@ const SB_HDR     = () => ({'Content-Type':'application/json','apikey':SB_API_KEY
 const SB_GET_HDR = () => ({'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN()});
 
 // Refresh the access_token using the refresh_token. Returns true on success.
-async function refreshSession(){
+// Refresh tokens rotate on use, so concurrent refreshes must share one
+// request — a second caller sending the same (now spent) refresh token
+// would be refused and sign the user out.
+let refreshInFlight=null;
+function refreshSession(){
+  if(!refreshInFlight) refreshInFlight=doRefreshSession().finally(()=>{ refreshInFlight=null; });
+  return refreshInFlight;
+}
+
+// Access tokens last an hour. Refreshing only after a request had already
+// failed left every call that bypassed sbWithRetry (Add a Pastor, Add Admin,
+// Email PIN, uploads, AI) failing with "JWT expired" an hour after sign-in,
+// and audit() silently dropped events once the token lapsed. Every
+// authenticated call now refreshes first when the token is within a minute
+// of expiry.
+async function ensureFreshSession(){
+  const exp=Number(ST.session?.expires_at||0);
+  if(!ST.session?.refresh_token || !exp) return;
+  if(exp - Math.floor(Date.now()/1000) > 60) return;
+  await refreshSession();
+}
+
+async function doRefreshSession(){
   if(!ST.session?.refresh_token) return false;
   try {
     const r = await fetch(`${C.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
@@ -759,19 +781,33 @@ async function refreshSession(){
 // because anon has no UPDATE/DELETE policy. Retry on either status after
 // a token refresh.
 async function sbWithRetry(builder){
+  await ensureFreshSession();
   let r = await builder();
   if((r.status === 401 || r.status === 403) && await refreshSession()){
     r = await builder();
   }
-  // If we still got an auth failure after refresh AND we don't have a
-  // session token, force the user back to login — don't keep firing requests
-  // as anon that will all 403. This is the honest "your session expired" UX
-  // instead of mysterious silent failures.
-  if((r.status === 401 || r.status === 403) && !ST.session?.access_token){
-    try { await signOutSession(); } catch(_){}
-    go('s-login');
-  }
+  // Still refused and the token is expired (or gone): the refresh failed —
+  // typically because another copy of the app (installed app plus a browser
+  // tab) already spent the single-use refresh token. Every request from here
+  // would fail with "JWT expired" while the screen still looked signed in.
+  // End the session and say so. A 403 on a live token is an RLS answer, not
+  // an expired session, and is returned to the caller untouched.
+  const exp = Number(ST.session?.expires_at||0);
+  const expired = !ST.session?.access_token || (exp && Math.floor(Date.now()/1000) >= exp);
+  if((r.status === 401 || r.status === 403) && expired) await endExpiredSession();
   return r;
+}
+
+let endingSession=false;
+async function endExpiredSession(){
+  if(endingSession) return;
+  endingSession=true;
+  try { await signOutSession(); } catch(_){}
+  ST.profile=null;
+  clearDashboardChrome();
+  go('s-login');
+  alert('Your sign-in has expired. Please sign in again.');
+  endingSession=false;
 }
 async function sbI(table,data){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}`,{method:'POST',headers:SB_HDR(),body:JSON.stringify(data)}));
@@ -807,7 +843,11 @@ async function sbD(table,filter){
 }
 async function sbS(table,params){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${new URLSearchParams(params)}`,{headers:SB_GET_HDR()}));
-  if(!r.ok) throw new Error('Select failed');
+  if(!r.ok){
+    let msg = 'Select failed ('+r.status+')';
+    try { const d = await r.json(); msg = d?.message || d?.error || msg; } catch(_){}
+    throw new Error(msg);
+  }
   return r.json();
 }
 
@@ -964,11 +1004,11 @@ async function storageUpload(bucket, path, file){
   // pastor uploads with "new row violates row-level security policy" on
   // the announcements / wins / avatars buckets. All callers generate a
   // fresh Date.now()-suffixed path, so collisions don't happen in practice.
-  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
     headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType},
     body:file
-  });
+  }));
   if(!r.ok){
     let detail='';
     try { const body=await r.text(); detail=body ? ' — '+body.slice(0,200) : ''; } catch(_){}
@@ -986,11 +1026,11 @@ async function storageUploadPrivate(bucket, path, file){
   // x-upsert intentionally omitted — see storageUpload() above for the
   // RLS reason. Private buckets (credentials, ministry-photos) also
   // generate fresh Date.now()-suffixed paths so collisions don't happen.
-  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}/${path}`,{
     method:'POST',
     headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':contentType},
     body:file
-  });
+  }));
   if(!r.ok){
     let detail='';
     try { const body=await r.text(); detail=body ? ' — '+body.slice(0,200) : ''; } catch(_){}
@@ -1003,11 +1043,11 @@ async function storageUploadPrivate(bucket, path, file){
 // caller's JWT decides whether they may access this path (storage RLS),
 // so this never produces a URL the JWT couldn't have read directly.
 async function signedUrl(bucket, path, expiresIn=300){
-  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/sign/${bucket}/${path}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/sign/${bucket}/${path}`,{
     method:'POST',
     headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
     body:JSON.stringify({expiresIn})
-  });
+  }));
   if(!r.ok) throw new Error('Could not generate signed URL: '+r.status);
   const data=await r.json();
   const rel = data.signedURL || data.signedUrl || '';
@@ -1019,22 +1059,22 @@ async function signedUrl(bucket, path, expiresIn=300){
 // without leaking other folders' contents to the response (RLS still
 // gates which entries are returned).
 async function listPrivateFolder(bucket, prefix, limit=100){
-  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/list/${bucket}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/list/${bucket}`,{
     method:'POST',
     headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
     body:JSON.stringify({prefix, limit, sortBy:{column:'created_at', order:'desc'}})
-  });
+  }));
   if(!r.ok) throw new Error('List failed: '+r.status);
   return r.json();
 }
 
 async function storageDelete(bucket, paths){
   const list = Array.isArray(paths) ? paths : [paths];
-  const r=await fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}`,{
     method:'DELETE',
     headers:{'apikey':SB_API_KEY(),'Authorization':'Bearer '+SB_AUTH_TOKEN(),'Content-Type':'application/json'},
     body:JSON.stringify({prefixes:list})
-  });
+  }));
   if(!r.ok) throw new Error('Delete failed: '+r.status);
   return r.json();
 }
@@ -1225,10 +1265,11 @@ async function editAnnouncement(id){
 async function audit(eventType, meta={}){
   try {
     if(!ST.session?.access_token) return;
-    // Skip if the token is already past expires_at; the call would 401 and
-    // the browser would log a network error even though we'd swallow the throw.
-    const exp = ST.session.expires_at;
-    if(exp && Math.floor(Date.now()/1000) >= Number(exp)) return;
+    // Refresh rather than skip: skipping an expired token is how every
+    // failure after the first hour of a session went unrecorded.
+    await ensureFreshSession();
+    const exp = ST.session?.expires_at;
+    if(!ST.session?.access_token || (exp && Math.floor(Date.now()/1000) >= Number(exp))) return;
     const {table, targetId, ...rest} = meta;
     await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-audit`, {
       method:'POST',
@@ -1248,9 +1289,9 @@ async function audit(eventType, meta={}){
 }
 
 async function aiCall(prompt,callType='care'){
-  const r=await fetch(`${C.supabaseUrl}/functions/v1/${C.aiProxyFn}`,{
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/functions/v1/${C.aiProxyFn}`,{
     method:'POST',headers:SB_HDR(),
-    body:JSON.stringify({callType,prompt:GUARDRAIL()+'\n\n'+prompt})});
+    body:JSON.stringify({callType,prompt:GUARDRAIL()+'\n\n'+prompt})}));
   if(!r.ok)throw new Error('AI error '+r.status);
   const d=await r.json();
   return typeof d==='string'?d:JSON.stringify(d);
@@ -2459,7 +2500,8 @@ async function loadProfile(){
   if(isDashboardUser()){
     try {
       const rows = await sbS('rf_admins',{select:ADMIN_PROFILE_COLS, id:'eq.'+ST.session.userId});
-      if(rows[0]) ST.profile = rows[0];
+      if(!rows[0]) throw new Error('no profile found for this sign-in — sign out and back in');
+      ST.profile = rows[0];
     } catch(e){
       audit('PROFILE_LOAD_FAILED',{table:'rf_admins', targetId:ST.session.userId, message:String(e.message||e).slice(0,200)});
       showErr('prof-err','Could not load your profile: '+(e.message||'unknown'));
@@ -3055,7 +3097,7 @@ async function confirmPinReset(){
 // session token rather than callEdgeFn(), which uses the publishable key and
 // would arrive as anon. Resolves to { sent, email }; throws on failure.
 async function emailPinTo(body){
-  const r = await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
+  const r = await sbWithRetry(()=>fetch(`${C.supabaseUrl}/functions/v1/kgfcm-admin-pin-issue`, {
     method:'POST',
     headers:{
       'Content-Type':'application/json',
@@ -3063,7 +3105,7 @@ async function emailPinTo(body){
       'Authorization':'Bearer '+ST.session.access_token,
     },
     body: JSON.stringify(body),
-  });
+  }));
   const data = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(data.error || 'Could not send the PIN.');
   return data;
@@ -3543,7 +3585,7 @@ function renderBishopDevotionCard(d){
 async function generateTodayDevotion(){
   const cur=$('dev-current'); if(cur) cur.innerHTML=loading();
   try {
-    const r=await fetch(`${C.supabaseUrl}/functions/v1/kgfcm-devotion-generate`, {
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/functions/v1/kgfcm-devotion-generate`, {
       method:'POST',
       headers:{
         'Content-Type':'application/json',
@@ -3551,7 +3593,7 @@ async function generateTodayDevotion(){
         'Authorization':'Bearer '+ST.session.access_token,
       },
       body: JSON.stringify({}),
-    });
+    }));
     const data=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(data.error||'Could not generate.');
     audit('DEVOTION_GENERATED',{table:'rf_devotions', targetId:data.draft?.id});
@@ -4148,10 +4190,10 @@ async function addPastorByEmail(){
   if(!email||!/^\S+@\S+\.\S+$/.test(email)){showErr('np-err','Please enter a valid email address.');return;}
   const btn=$('np-btn'); btn.disabled=true; btn.textContent='Adding...';
   try {
-    const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/create_pastor`,{
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/create_pastor`,{
       method:'POST', headers:SB_HDR(),
       body:JSON.stringify({p_email:email, p_name:name}),
-    });
+    }));
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
       throw new Error(err.message || 'Could not add this pastor.');
@@ -4395,7 +4437,9 @@ async function loadManageAdmins(){
   const panel=$('bp-manage-admins'); if(!panel) return;
   panel.innerHTML=loading();
   try {
-    const admins=await sbS('rf_admins',{select:'*',order:'created_at.desc'});
+    // Named columns: select=* includes pin_bcrypt, which `authenticated`
+    // cannot read, so the whole query was refused and this list never loaded.
+    const admins=await sbS('rf_admins',{select:'id,full_name,email,status,created_at',order:'created_at.desc'});
     panel.innerHTML=`
       <div class="b-drill" style="max-width:500px;margin-bottom:20px">
         <div style="font-size:13px;font-weight:500;color:var(--frost);margin-bottom:6px">Add an Admin</div>
@@ -4424,7 +4468,10 @@ async function loadManageAdmins(){
         <button class="pw-act" onclick="bishopResetAdminPin('${a.id}')" style="flex-shrink:0">Reset PIN</button>
         <button class="pw-act danger" onclick="removeAdmin('${a.id}',this)" style="flex-shrink:0">Remove</button>
       </div>`).join(''):'<div class="empty">No admins added yet.</div>'}`;
-  } catch(e){ panel.innerHTML='<div class="empty">Could not load admins.</div>'; }
+  } catch(e){
+    audit('ADMINS_LOAD_FAILED',{table:'rf_admins',message:String(e.message||e).slice(0,200)});
+    panel.innerHTML='<div class="empty">Could not load admins.</div>';
+  }
 }
 
 async function addAdmin(){
@@ -4440,10 +4487,10 @@ async function addAdmin(){
     // layer; the bishop's JWT authorizes the call. The RPC requires
     // app_metadata.role = 'bishop' exactly — deliberately NOT is_bishop(),
     // which also admits admins and would let one admin mint another.
-    const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/create_admin`,{
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/create_admin`,{
       method:'POST', headers:SB_HDR(),
       body:JSON.stringify({p_email:email, p_name:name, p_pin:pin}),
-    });
+    }));
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
       throw new Error(err.message || 'Could not add admin.');
@@ -5714,11 +5761,11 @@ function showIosInstallHint(){
 async function firePushNotify(type, id){
   if(!id) return;
   try {
-    const r=await fetch(`${C.supabaseUrl}/functions/v1/${C.pushNotifyFn}`,{
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/functions/v1/${C.pushNotifyFn}`,{
       method:'POST',
       headers:SB_HDR(),
       body:JSON.stringify({type,id})
-    });
+    }));
     if(!r.ok) audit('PUSH_NOTIFY_CALL_FAILED',{notify_type:type,status:r.status});
   } catch(e){ audit('PUSH_NOTIFY_CALL_FAILED',{notify_type:type,message:String(e&&e.message||e).slice(0,200)}); }
 }
