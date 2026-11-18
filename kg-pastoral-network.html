@@ -4109,7 +4109,7 @@ async function loadBishopInvites(){
     <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">All Invitations</div>
     <div id="inv-list">${loading()}</div>`;
   try {
-    const rows=await sbS('rf_invites',{select:'*',order:'created_at.desc'});
+    const rows=await sbS('rf_invites',{select:'id,invited_name,accepted_at,created_at',order:'created_at.desc'});
     $('inv-list').innerHTML=rows.length?`<table style="width:100%;border-collapse:collapse">
       <thead><tr style="font-size:11px;color:var(--ash);letter-spacing:0.5px">
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Name</th>
@@ -4122,7 +4122,10 @@ async function loadBishopInvites(){
         <td style="padding:10px 12px;border-bottom:0.5px solid var(--br)"><span class="pill ${r.accepted_at?'pill-green':'pill-mist'}">${r.accepted_at?'Joined':'Pending'}</span></td>
       </tr>`).join('')}</tbody>
     </table>`:'<div class="empty">No invitations sent yet.</div>';
-  } catch(e){$('inv-list').innerHTML='<div class="empty">Could not load invites.</div>';}
+  } catch(e){
+    audit('INVITES_LOAD_FAILED',{table:'rf_invites',message:String(e.message||e).slice(0,200)});
+    $('inv-list').innerHTML='<div class="empty">Could not load invites.</div>';
+  }
 }
 
 // Add a pastor the bishop has an email address for, then email them a working
@@ -4176,12 +4179,18 @@ async function sendBishopInvite(){
   if(!name){showErr('inv-err','Please enter the pastor\'s name.');return;}
   const btn=$('inv-btn'); btn.disabled=true; btn.textContent='Creating...';
   try {
-    // SEC-2: CSPRNG-based invite token. crypto.randomUUID() yields 122 bits of
-    // entropy — far stronger than the legacy btoa(name+timestamp) which leaked
-    // both the invitee's name and creation time once base64-decoded.
-    const token=crypto.randomUUID();
-    await sbI('rf_invites',{email:'',invited_name:name,token,accepted_at:null});
-    audit('BISHOP_INVITE_SENT',{table:'rf_invites',invited_name:name});
+    // The server mints the token (32 random bytes), stores only its SHA-256,
+    // audits INVITE_CREATED, and returns the token once — this is the only
+    // moment it exists in plaintext. See create_invite() in migration
+    // 20261118210000.
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/create_invite`,{
+      method:'POST', headers:SB_HDR(), body:JSON.stringify({p_name:name}),
+    }));
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err.message || 'Could not create invite ('+r.status+')');
+    }
+    const token=await r.json();
     // Build invite link
     const link=location.origin+'/?invite='+encodeURIComponent(token);
     const msg=`${C.bishopName} is inviting you to join the ${C.networkName} pastoral network.\n\nTap this link to get started:\n${link}`;
@@ -4196,7 +4205,10 @@ async function sendBishopInvite(){
       </div>`;
     showOk('inv-ok');
     loadBishopInvites();
-  } catch(e){showErr('inv-err','Could not create invite.');}
+  } catch(e){
+    audit('INVITE_CREATE_FAILED',{table:'rf_invites',message:String(e.message||e).slice(0,200)});
+    showErr('inv-err','Could not create invite: '+(e.message||'unknown'));
+  }
   btn.disabled=false; btn.textContent='Create Invite →';
 }
 
@@ -5715,6 +5727,11 @@ async function firePushNotify(type, id){
 // BOOT
 // ============================================================
 async function boot(){
+  // Read the invite before replaceState rewrites the URL. An invite link
+  // takes priority over a saved session: it used to be checked last, so a
+  // link opened on a phone where anyone was signed in (including the admin
+  // testing her own link) silently opened that session instead.
+  const inviteToken=new URLSearchParams(location.search).get('invite');
   history.replaceState({screen:'root'},'',' ');
   await loadConfig();
   renderPastor();
@@ -5732,6 +5749,8 @@ async function boot(){
     go('s-home'); initNotifPolling(); return;
   }
 
+  if(inviteToken){ $('reg-token') && ($('reg-token').value=inviteToken); go('s-register'); return; }
+
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;
@@ -5742,9 +5761,6 @@ async function boot(){
     ST.profile=loadLocal('profile');
     go('s-home'); initNotifPolling(); return;
   }
-  const params=new URLSearchParams(location.search);
-  const token=params.get('invite');
-  if(token){ $('reg-token') && ($('reg-token').value=token); go('s-register'); return; }
   go('s-login');
 }
 
@@ -5879,7 +5895,8 @@ create table rf_invites (
   id uuid primary key default gen_random_uuid(),
   email text not null,
   invited_name text,
-  token text unique not null,
+  token_hash text unique not null,
+  created_by uuid,
   accepted_at timestamptz,
   created_at timestamptz default now()
 );

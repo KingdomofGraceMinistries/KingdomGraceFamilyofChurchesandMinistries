@@ -8,7 +8,8 @@
 // an active pastor. Server-side flow:
 //   1. CORS / shape (invite_token required) / rate-limit.
 //   2. Refuse if the email belongs to a pastor or an admin.
-//   3. Claim the invite atomically: one UPDATE ... WHERE accepted_at IS NULL.
+//   3. Claim the invite atomically by the SHA-256 of its token: one
+//      UPDATE ... WHERE token_hash = $1 AND accepted_at IS NULL.
 //      Two sign-ups racing one link cannot both win.
 //   4. bcrypt-hash PIN server-side.
 //   5. Create auth.users with app_metadata.role='pastor'.
@@ -21,7 +22,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.119.0";
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 import { corsHeaders, isOriginAllowed, jsonResponse } from "../_shared/cors.ts";
-import { audit } from "../_shared/audit.ts";
+import { audit, hashIdentifier } from "../_shared/audit.ts";
 import { PUBLISHABLE_KEY, SECRET_KEY } from "../_shared/server_key.ts";
 import { rateLimit, padTo } from "../_shared/rate_limit.ts";
 
@@ -101,9 +102,11 @@ Deno.serve(async (req: Request) => {
 
     // Claim the invite in one statement. Only an existing, unused invite
     // matches, and only one concurrent caller can flip accepted_at.
+    // rf_invites stores only the SHA-256 hex of the token (create_invite()
+    // in migration 20261118210000), the same digest hashIdentifier produces.
     const claim = await supa.from("rf_invites")
       .update({ accepted_at: new Date().toISOString() })
-      .eq("token", invite_token)
+      .eq("token_hash", await hashIdentifier(invite_token))
       .is("accepted_at", null)
       .select("id")
       .maybeSingle();
