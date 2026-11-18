@@ -4150,9 +4150,17 @@ async function loadBishopInvites(){
     </div>
     <div style="font-size:11px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">All Invitations</div>
     <div id="inv-list">${loading()}</div>`;
+  await loadInviteList();
+}
+
+// Refreshes only the invitations table. Creating an invite or adding a pastor
+// must not re-render the whole panel: that wiped the share-link box (and the
+// "added" confirmation) the instant it appeared, so no link was ever shown.
+async function loadInviteList(){
+  const list=$('inv-list'); if(!list) return;
   try {
     const rows=await sbS('rf_invites',{select:'id,invited_name,accepted_at,created_at',order:'created_at.desc'});
-    $('inv-list').innerHTML=rows.length?`<table style="width:100%;border-collapse:collapse">
+    list.innerHTML=rows.length?`<table style="width:100%;border-collapse:collapse">
       <thead><tr style="font-size:11px;color:var(--ash);letter-spacing:0.5px">
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Name</th>
         <th style="text-align:left;padding:8px 12px;border-bottom:0.5px solid var(--br)">Sent</th>
@@ -4166,7 +4174,7 @@ async function loadBishopInvites(){
     </table>`:'<div class="empty">No invitations sent yet.</div>';
   } catch(e){
     audit('INVITES_LOAD_FAILED',{table:'rf_invites',message:String(e.message||e).slice(0,200)});
-    $('inv-list').innerHTML='<div class="empty">Could not load invites.</div>';
+    list.innerHTML='<div class="empty">Could not load invites.</div>';
   }
 }
 
@@ -4211,7 +4219,7 @@ async function addPastorByEmail(){
     } catch(mailErr){
       showErr('np-err', name+' was added, but the PIN email to '+email+' did not go out ('+(mailErr.message||'send failed')+'). They cannot sign in yet. Open them from the Overview tab and tap "Reset PIN" to send it again.');
     }
-    loadBishopInvites();
+    loadInviteList();
   } catch(e){ showErr('np-err', e.message || 'Could not add this pastor.'); }
   btn.disabled=false; btn.textContent='Add Pastor & Email PIN →';
 }
@@ -4246,7 +4254,7 @@ async function sendBishopInvite(){
         <button class="fsub" style="flex:1;padding:10px;font-size:12px;min-width:120px;background:var(--ink3);border:0.5px solid var(--br);color:var(--mist)" onclick="shareInvite('copy','${esc(link)}')">📋 Copy Link</button>
       </div>`;
     showOk('inv-ok');
-    loadBishopInvites();
+    loadInviteList();
   } catch(e){
     audit('INVITE_CREATE_FAILED',{table:'rf_invites',message:String(e.message||e).slice(0,200)});
     showErr('inv-err','Could not create invite: '+(e.message||'unknown'));
