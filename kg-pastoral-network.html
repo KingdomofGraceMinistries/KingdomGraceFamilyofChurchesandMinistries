@@ -713,7 +713,7 @@ const avHTML = (url,name,size=36) => url
 // the migration revokes those grants from authenticated; only service_role
 // reads them via edge functions. Use this constant for every rf_pastors
 // SELECT call so we never accidentally request a forbidden column.
-const PASTOR_COLS = 'id,email,full_name,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,avatar_url,status,last_checkin_at,last_pulse_score,posts_this_week,created_at,credential_type,ordination_date,ordained_by,covering_under,credential_status,role,auth_user_id,credential_doc_path,credential_doc_uploaded_at';
+const PASTOR_COLS = 'id,email,full_name,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,avatar_url,status,last_checkin_at,last_pulse_score,posts_this_week,created_at,credential_type,ordination_date,ordained_by,covering_under,credential_status,role,auth_user_id,credential_doc_path,credential_doc_uploaded_at,public_profile,public_slug,credential_verified_at';
 
 // Edge function names. Deployed without --no-verify-jwt; they accept the
 // publishable key as Authorization and apply their own rate limit + audit.
@@ -1068,6 +1068,26 @@ async function listPrivateFolder(bucket, prefix, limit=100){
   return r.json();
 }
 
+// Remove a superseded image (old avatar, deleted win, removed announcement)
+// given its public URL. Only the three public image buckets qualify; Storage
+// RLS decides whether this user may delete it (owner or bishop/admin). Never
+// blocks the user's action: a failure, or a delete that matched nothing, is
+// audited instead.
+async function deleteStoredImage(url){
+  const prefix=`${C.supabaseUrl}/storage/v1/object/public/`;
+  if(!url || !url.startsWith(prefix)) return;
+  const rest=decodeURIComponent(url.slice(prefix.length));
+  const bucket=rest.split('/')[0];
+  const path=rest.slice(bucket.length+1);
+  if(!['avatars','wins','announcements'].includes(bucket) || !path) return;
+  try {
+    const removed=await storageDelete(bucket, path);
+    if(!Array.isArray(removed) || !removed.length) audit('STORAGE_CLEANUP_NOOP',{bucket, path});
+  } catch(e){
+    audit('STORAGE_CLEANUP_FAILED',{bucket, path, message:String(e.message||e).slice(0,200)});
+  }
+}
+
 async function storageDelete(bucket, paths){
   const list = Array.isArray(paths) ? paths : [paths];
   const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/storage/v1/object/${bucket}`,{
@@ -1184,9 +1204,16 @@ async function editWinPost(id){
     }
   });
 }
+// Delete a win and the photo it carried. The image URL is read first, since
+// the row that holds it is about to go.
+async function removeWinWithImage(id){
+  const rows=await sbS('rf_wins',{select:'image_url',id:'eq.'+id});
+  await sbD('rf_wins','id=eq.'+id);
+  if(rows[0]?.image_url) deleteStoredImage(rows[0].image_url);
+}
 async function deleteWinPost(id){
   if(!confirm('Delete this win? This cannot be undone.')) return;
-  try { await sbD('rf_wins','id=eq.'+id); audit('WIN_DELETED',{table:'rf_wins', targetId:id}); REFRESH.wins(); }
+  try { await removeWinWithImage(id); audit('WIN_DELETED',{table:'rf_wins', targetId:id}); REFRESH.wins(); }
   catch(e){ alert('Could not delete: '+(e?.message||'unknown')); }
 }
 
@@ -1609,6 +1636,7 @@ function onScreen(id){
   else if(id==='s-prayer') loadPrayer();
   else if(id==='s-wins') loadWins();
   else if(id==='s-profile') loadProfile();
+  else if(id==='s-public-pastor') loadPublicPastor();
   else if(id==='s-checkin') loadCheckin();
   else if(id==='s-dm') loadDM();
   else if(id==='s-ann') loadAnnouncements();
@@ -2021,7 +2049,9 @@ async function loadPastorView(id){
         ${p.ordination_date?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">Ordained ${esc(p.ordination_date)}</div>`:''}
         ${p.ordained_by?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">By ${esc(p.ordained_by)}</div>`:''}
         ${p.covering_under?`<div style="font-size:12px;color:var(--mist);margin-bottom:6px">Covering: ${esc(p.covering_under)}</div>`:''}
-        ${p.credential_doc_path?`<button class="pw-act" onclick="viewPastorCredential('${esc(p.credential_doc_path)}')" style="margin-top:6px">📄 View credential scan${p.credential_doc_uploaded_at?` (${new Date(p.credential_doc_uploaded_at).toLocaleDateString()})`:''}</button>`:''}
+        ${p.credential_verified_at?`<div style="font-size:12px;color:var(--sage);margin:6px 0 2px">✓ Verified by ${esc(C.networkShort)} · ${new Date(p.credential_verified_at).toLocaleDateString()}</div>`:''}
+        ${isDashboardUser()&&p.credential_doc_path?`<button class="pw-act" onclick="viewPastorCredential('${esc(p.credential_doc_path)}')" style="margin-top:6px">📄 View credential scan${p.credential_doc_uploaded_at?` (${new Date(p.credential_doc_uploaded_at).toLocaleDateString()})`:''}</button>`:''}
+        ${isDashboardUser()&&p.credential_type?`<button class="pw-act" onclick="setCredentialVerified('${esc(p.id)}',${p.credential_verified_at?'false':'true'},this)" style="margin-top:6px">${p.credential_verified_at?'Remove verification':'✓ Verify credential'}</button>`:''}
       </div>`:''}
       ${p.bio?`<div class="pw-item" style="margin-bottom:12px">
         <div style="font-size:10px;color:var(--ash);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">About</div>
@@ -2516,7 +2546,113 @@ async function loadProfile(){
   const wrap=$('av-wrap');
   if(wrap&&p.avatar_url) wrap.innerHTML=`<img src="${esc(p.avatar_url)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" alt="Your photo">`;
   renderCredentialDocStatus();
+  renderPublicProfileStatus();
   loadMinistryPhotoGrid();
+}
+
+// ── PUBLIC PASTOR PAGES (no sign-in) ─────────────────────────────────
+// Only the publishable key is sent — these two functions are the whole
+// public surface, and they return opted-in, active pastors only.
+async function publicRpc(fn, body){
+  const r=await fetch(`${C.supabaseUrl}/rest/v1/rpc/${fn}`,{
+    method:'POST', headers:{'Content-Type':'application/json','apikey':SB_API_KEY()}, body:JSON.stringify(body),
+  });
+  if(!r.ok){
+    const err=await r.json().catch(()=>({}));
+    throw new Error(err.message || 'Request failed ('+r.status+')');
+  }
+  return r.json();
+}
+
+function publicBadge(verifiedAt){
+  return verifiedAt
+    ? `<span class="pill pill-green" style="font-size:11px">✓ Verified by ${esc(C.networkShort)}</span>`
+    : `<span class="pill pill-mist" style="font-size:11px">Not yet verified</span>`;
+}
+
+async function searchPublicPastors(){
+  const q=($('dir-q')?.value||'').trim();
+  const out=$('dir-results'); if(!out) return;
+  hideErr('dir-err');
+  if(q.length<2){ showErr('dir-err','Type at least 2 letters.'); return; }
+  out.innerHTML=loading();
+  try {
+    const rows=await publicRpc('search_public_pastors',{p_query:q});
+    out.innerHTML=rows.length ? rows.map(p=>`
+      <div class="pw-item" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="openPublicPastor('${esc(p.slug)}')">
+        ${p.avatar_url?`<img src="${esc(p.avatar_url)}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--gold)" alt="">`:`<div class="b-pastor-av-init" style="width:48px;height:48px;font-size:17px">${esc(initials(p.full_name))}</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;color:var(--frost);font-weight:500">${esc(p.full_name)}</div>
+          <div style="font-size:12px;color:var(--mist)">${esc([p.credential_type,p.church_name,p.city].filter(Boolean).join(' · '))}</div>
+          <div style="margin-top:4px">${publicBadge(p.verified_at)}</div>
+        </div>
+      </div>`).join('') : '<div class="empty">No listed pastors match that search.</div>';
+  } catch(e){
+    out.innerHTML='';
+    showErr('dir-err','Search failed: '+(e.message||'unknown'));
+  }
+}
+
+function openPublicPastor(slug){
+  ST.publicSlug=slug;
+  go('s-public-pastor');
+}
+
+async function loadPublicPastor(){
+  const body=$('public-pastor-body'); if(!body) return;
+  body.innerHTML=loading();
+  try {
+    const rows=await publicRpc('get_public_pastor',{p_slug:ST.publicSlug||''});
+    const p=rows[0];
+    if(!p){
+      body.innerHTML=`<div class="empty">This pastor's public page is not available. They may have turned it off.</div>
+        <button class="tnav-btn" style="width:100%;margin-top:14px" onclick="go('s-directory')">🔎 Find a pastor</button>`;
+      return;
+    }
+    body.innerHTML=`
+      <div style="text-align:center;margin-bottom:20px">
+        ${p.avatar_url?`<img src="${esc(p.avatar_url)}" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);margin:0 auto 12px;display:block" alt="${esc(p.full_name)}">`:`<div class="b-pastor-av-init" style="width:120px;height:120px;font-size:42px;margin:0 auto 12px">${esc(initials(p.full_name))}</div>`}
+        <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:700;color:var(--frost);line-height:1.2">${esc(p.full_name)}</div>
+        ${p.church_name?`<div style="font-size:13px;color:var(--gold);margin-top:6px;font-weight:500">${esc(p.church_name)}</div>`:''}
+        ${p.city?`<div style="font-size:12px;color:var(--mist);margin-top:2px">${esc(p.city)}</div>`:''}
+        <div style="margin-top:10px">${publicBadge(p.verified_at)}</div>
+      </div>
+      <div class="pw-item" style="border-left:2px solid var(--gold)">
+        <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Credentials</div>
+        <div style="font-size:13px;color:var(--frost);margin-bottom:4px"><strong style="color:var(--gold)">${esc(p.credential_type||'Not stated')}</strong></div>
+        ${p.ordained_by?`<div style="font-size:12px;color:var(--mist);margin-bottom:2px">Ordained by ${esc(p.ordained_by)}</div>`:''}
+        ${p.covering_under?`<div style="font-size:12px;color:var(--mist)">Covering: ${esc(p.covering_under)}</div>`:''}
+        ${p.verified_at?`<div style="font-size:11px;color:var(--ash);margin-top:8px">Credential checked by ${esc(C.networkName)} on ${new Date(p.verified_at).toLocaleDateString()}.</div>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--ash);text-align:center;margin-top:14px">A member of ${esc(C.networkName)}.</div>
+      <button class="tnav-btn" style="width:100%;margin-top:18px" onclick="go('s-directory')">🔎 Find another pastor</button>`;
+  } catch(e){
+    body.innerHTML=`<div class="empty">Could not load this page: ${esc(e.message||'unknown')}</div>`;
+  }
+}
+
+// Pastors only: the public page and the verified badge live on rf_pastors.
+function publicPastorLink(slug){ return location.origin+'/?pastor='+encodeURIComponent(slug); }
+function renderPublicProfileStatus(){
+  const p=ST.profile||{};
+  const ver=$('prof-verified');
+  if(ver){
+    ver.style.color=p.credential_verified_at?'var(--sage)':'var(--ash)';
+    ver.textContent=isDashboardUser()?'':(p.credential_verified_at
+      ? '✓ Verified by '+C.networkShort+' on '+new Date(p.credential_verified_at).toLocaleDateString()
+      : (p.credential_type ? 'Not yet verified — the Bishop or an admin will review your credential.' : ''));
+  }
+  const wrap=$('prof-public-wrap'); if(!wrap) return;
+  wrap.style.display=isDashboardUser()?'none':'';
+  const box=$('prof-public'); if(box) box.checked=!!p.public_profile;
+  const link=$('prof-public-link'); if(!link) return;
+  if(p.public_profile && p.public_slug){
+    const url=publicPastorLink(p.public_slug);
+    link.innerHTML=`Your public page: <a href="${esc(url)}" target="_blank" rel="noopener" style="color:var(--gold);word-break:break-all">${esc(url)}</a>
+      <button class="pw-act" type="button" style="margin-left:6px" onclick="navigator.clipboard.writeText('${esc(url)}').then(()=>showOk('prof-ok','Link copied.')).catch(e=>showErr('prof-err','Could not copy: '+e.message))">📋 Copy</button>`;
+  } else {
+    link.textContent=p.public_profile?'Save your profile to create your public link.':'Your public page is off.';
+  }
 }
 
 // ============================================================
@@ -2803,10 +2939,22 @@ async function saveProfile(){
     covering_under:$('prof-covering')?.value.trim()||null
   };
   if(ST.avatarData) data.avatar_url=ST.avatarData;
+  if(!isDashboardUser()) data.public_profile=!!$('prof-public')?.checked;
+  const previousAvatar=ST.profile?.avatar_url||null;
   try {
     await saveMyProfile(data);
-    ST.profile={...ST.profile,...data}; saveLocal('profile',ST.profile);
+    ST.profile={...ST.profile,...data};
+    ST.avatarData=null;
+    // The server mints the public link and clears the verified badge when
+    // credentials change, so read those back rather than guess.
+    if(!isDashboardUser()){
+      const rows=await sbS('rf_pastors',{select:'public_slug,credential_verified_at',id:'eq.'+ST.session.userId});
+      if(rows[0]) ST.profile={...ST.profile,...rows[0]};
+    }
+    saveLocal('profile',ST.profile);
     audit('PROFILE_UPDATED',{table:profileTable(),targetId:ST.session.userId});
+    if(data.avatar_url && previousAvatar && previousAvatar!==data.avatar_url) deleteStoredImage(previousAvatar);
+    renderPublicProfileStatus();
     showOk('prof-ok','Profile saved.');
   } catch(e){
     audit('PROFILE_UPDATE_FAILED',{table:profileTable(),targetId:ST.session.userId,message:String(e.message||e).slice(0,200)});
@@ -2847,8 +2995,17 @@ async function uploadCredentialDoc(input){
     const path = `${authId}/credential-${Date.now()}.${ext}`;
     await storageUploadPrivate('credentials', path, file);
     const nowIso = new Date().toISOString();
+    const previousScan = ST.profile?.credential_doc_path || null;
     await saveMyProfile({credential_doc_path:path, credential_doc_uploaded_at:nowIso});
-    ST.profile = {...ST.profile, credential_doc_path:path, credential_doc_uploaded_at:nowIso};
+    // A new scan clears any verification server-side; reflect that.
+    ST.profile = {...ST.profile, credential_doc_path:path, credential_doc_uploaded_at:nowIso, credential_verified_at:null};
+    // The superseded scan is private and now unreferenced — remove it.
+    if(previousScan && previousScan!==path){
+      storageDelete('credentials', previousScan).then(removed=>{
+        if(!Array.isArray(removed) || !removed.length) audit('STORAGE_CLEANUP_NOOP',{bucket:'credentials'});
+      }).catch(e=>audit('STORAGE_CLEANUP_FAILED',{bucket:'credentials', message:String(e.message||e).slice(0,200)}));
+    }
+    renderPublicProfileStatus();
     saveLocal('profile', ST.profile);
     audit('CREDENTIAL_DOC_UPLOADED',{table:profileTable(), targetId:ST.session.userId});
     renderCredentialDocStatus();
@@ -2941,6 +3098,32 @@ async function deleteMinistryPhoto(path){
 // screen. RLS lets is_bishop() read the credentials bucket; the signed
 // URL is short-lived so it can't be shared after the bishop session
 // ends.
+// Staff confirm (or withdraw) that a pastor's credential has been checked.
+// The server stamps who and when, audits it, and clears the badge itself
+// whenever the pastor later changes a credential field or uploads a new scan.
+async function setCredentialVerified(pastorId, verified, btn){
+  if(verified && !confirm('Confirm you have checked this pastor\'s credential? It will show as "Verified by '+C.networkShort+'" on their profile and public page.')) return;
+  if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
+  try {
+    const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/set_credential_verified`,{
+      method:'POST', headers:SB_HDR(), body:JSON.stringify({p_pastor_id:pastorId, p_verified:verified}),
+    }));
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err.message || 'Update failed ('+r.status+')');
+    }
+    ST.allPastors=[];
+    // Re-render wherever the button was pressed: the dashboard drill-down or
+    // the in-app pastor profile.
+    if($('bishop-app')?.classList.contains('active')) bishopDrillPastor(pastorId);
+    else loadPastorView(pastorId);
+  } catch(e){
+    audit('CREDENTIAL_VERIFY_FAILED',{table:'rf_pastors',targetId:pastorId,message:String(e.message||e).slice(0,200)});
+    alert('Could not update verification: '+(e.message||'unknown'));
+    if(btn){ btn.disabled=false; btn.textContent=verified?'✓ Verify credential':'Remove verification'; }
+  }
+}
+
 async function viewPastorCredential(path){
   try {
     const url = await signedUrl('credentials', path, 300);
@@ -3006,7 +3189,10 @@ async function handleAvatar(input){
     // fixed name refused every avatar change after the first as a duplicate.
     const path=`${ST.session.userId}-${Date.now()}.${ext}`;
     const url=await storageUpload('avatars',path,file);
+    // A photo uploaded earlier in this visit but never saved is now orphaned.
+    const unsaved=ST.avatarData;
     ST.avatarData=url;
+    if(unsaved && unsaved!==url) deleteStoredImage(unsaved);
     if(wrap) wrap.innerHTML=`<img src="${esc(url)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" alt="Your photo">`;
     showOk('prof-ok','Photo uploaded — tap Save profile to keep it.');
   } catch(e){
@@ -3293,10 +3479,19 @@ async function togglePinAnn(id, pinned, btn){
 async function deleteAnn(id, btn){
   if(!confirm('Remove this announcement?')) return;
   try {
-    await sbU('rf_announcements','id=eq.'+id,{status:'removed'});
+    // Soft-removed rows stay readable to their author, so the image link is
+    // cleared along with the file rather than left pointing at nothing.
+    const rows=await sbS('rf_announcements',{select:'image_url',id:'eq.'+id});
+    await sbU('rf_announcements','id=eq.'+id,{status:'removed', image_url:null});
+    if(rows[0]?.image_url) deleteStoredImage(rows[0].image_url);
+    audit('ANNOUNCEMENT_REMOVED',{table:'rf_announcements',targetId:id});
     const card=$('ann-card-'+id);
     if(card) card.remove();
-  } catch(e){ btn.textContent='Error — try again'; }
+  } catch(e){
+    audit('ANNOUNCEMENT_REMOVE_FAILED',{table:'rf_announcements',targetId:id,message:String(e.message||e).slice(0,200)});
+    btn.textContent='Error — try again';
+    alert('Could not remove: '+(e.message||'unknown'));
+  }
 }
 
 async function loadBishopAnnouncements(){
@@ -4313,6 +4508,16 @@ async function bishopDrillPastor(pastorId){
               </div>
               <div style="font-size:11px;color:var(--ash);margin-top:6px">Last check-in: ${p.last_checkin_at?timeAgo(p.last_checkin_at):'Never'} · Pulse: ${['','😔','😕','😐','🙂','🔥'][p.last_pulse_score||3]}</div>
             </div>
+            ${(p.credential_type||p.credential_doc_path)?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:10px;border-left:2px solid var(--gold)">
+              <div style="font-size:10px;color:var(--gold);margin-bottom:4px">CREDENTIALS</div>
+              <div style="font-size:12px;color:var(--frost)">${esc(p.credential_type||'Not stated')}${p.ordination_date?` · ordained ${esc(p.ordination_date)}`:''}${p.ordained_by?` by ${esc(p.ordained_by)}`:''}</div>
+              ${p.covering_under?`<div style="font-size:11px;color:var(--mist);margin-top:2px">Covering: ${esc(p.covering_under)}</div>`:''}
+              <div style="font-size:11px;margin-top:4px;color:${p.credential_verified_at?'var(--sage)':'var(--ash)'}">${p.credential_verified_at?`✓ Verified ${new Date(p.credential_verified_at).toLocaleDateString()}`:'Not yet verified'}${p.public_profile?' · Public page on':''}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+                ${p.credential_doc_path?`<button class="pw-act" onclick="viewPastorCredential('${esc(p.credential_doc_path)}')">📄 View scan</button>`:''}
+                ${p.credential_type?`<button class="pw-act" onclick="setCredentialVerified('${esc(p.id)}',${p.credential_verified_at?'false':'true'},this)">${p.credential_verified_at?'Remove verification':'✓ Verify credential'}</button>`:''}
+              </div>
+            </div>`:''}
             ${p.bio?`<div style="font-size:12px;color:var(--mist);line-height:1.6;margin-bottom:10px;font-style:italic">"${esc(p.bio)}"</div>`:''}
             ${p.prayer_focus?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">🙏 PRAYER FOCUS</div><div style="font-size:12px;color:var(--mist)">${esc(p.prayer_focus)}</div></div>`:''}
             ${p.believing_for?`<div style="background:var(--ink3);border-radius:var(--rs);padding:10px;margin-bottom:8px"><div style="font-size:10px;color:var(--gold);margin-bottom:3px">✝️ BELIEVING FOR</div><div style="font-size:12px;color:var(--mist)">${esc(p.believing_for)}</div></div>`:''}
@@ -4565,7 +4770,7 @@ async function removeAdmin(id,btn){
 async function bishopPinResponse(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_team_responses','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_RESPONSE',{table:'rf_team_responses',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){btn.classList.toggle('on');btn.textContent='Error — retry';}}
 async function bishopPinWin(id,btn){btn.classList.toggle('on');const p=btn.classList.contains('on');try{await sbU('rf_wins','id=eq.'+id,{is_pinned:p});audit('BISHOP_PIN_WIN',{table:'rf_wins',targetId:id,pinned:p});btn.textContent=p?'📌 Pinned':'📌 Pin';}catch(e){btn.classList.toggle('on');btn.textContent='Error — retry';}}
 async function bishopRemovePrayer(id,btn){if(!confirm('Remove this prayer request?'))return;try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'removed'});audit('BISHOP_REMOVE_PRAYER',{table:'rf_prayer_requests',targetId:id});btn.closest('.pw-item').remove();}catch(e){btn.textContent='Error — retry';}}
-async function bishopRemoveWin(id,btn){if(!confirm('Remove this post?'))return;try{await sbD('rf_wins','id=eq.'+id);audit('BISHOP_REMOVE_WIN',{table:'rf_wins',targetId:id});btn.closest('.pw-item').remove();}catch(e){btn.textContent='Error — retry';}}
+async function bishopRemoveWin(id,btn){if(!confirm('Remove this post?'))return;try{await removeWinWithImage(id);audit('BISHOP_REMOVE_WIN',{table:'rf_wins',targetId:id});btn.closest('.pw-item').remove();}catch(e){btn.textContent='Error — retry';}}
 async function bishopMarkAnswered(id,btn){try{await sbU('rf_prayer_requests','id=eq.'+id,{status:'answered'});audit('BISHOP_MARK_ANSWERED',{table:'rf_prayer_requests',targetId:id});btn.textContent='✅ Answered';btn.classList.add('on');}catch(e){btn.textContent='Error — retry';}}
 async function bishopPrayFor(id,btn){btn.classList.add('on');btn.textContent='🙏 Praying';try{await sbU('rf_prayer_requests','id=eq.'+id,{prayed_count:1});audit('BISHOP_PRAY_FOR',{table:'rf_prayer_requests',targetId:id});}catch(e){btn.classList.remove('on');btn.textContent='🙏 Pray';}}
 async function bishopCelebrate(id,btn){btn.classList.add('on');btn.textContent='🔥 Celebrated!';try{await sbU('rf_wins','id=eq.'+id,{fire_count:1});audit('BISHOP_CELEBRATE',{table:'rf_wins',targetId:id});}catch(e){btn.classList.remove('on');btn.textContent='🔥 Celebrate';}}
@@ -4616,6 +4821,10 @@ function renderPastor(){
     <div class="bio-btn" onclick="showPinLogin('admin')" style="border-color:rgba(58,110,168,0.3)">
       <div class="bio-icon" style="background:rgba(58,110,168,0.15)">🔧</div>
       <div><div class="bio-label" style="color:var(--sky)">Admin Access</div><div class="bio-sub">Manage invites & communications</div></div>
+    </div>
+    <div class="bio-btn" onclick="go('s-directory')" style="margin-top:10px">
+      <div class="bio-icon">🔎</div>
+      <div><div class="bio-label">Find a Pastor</div><div class="bio-sub">Look up a ${esc(C.networkShort)} pastor and their credentials</div></div>
     </div>
     <details style="margin-top:18px;background:var(--ink2);border:0.5px solid var(--br);border-radius:var(--rm);overflow:hidden">
       <summary style="padding:12px 16px;font-size:12px;color:var(--gold);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;-webkit-user-select:none;user-select:none">
@@ -4689,6 +4898,32 @@ function renderPastor(){
 </div>
 
 <!-- REGISTER -->
+<!-- PUBLIC: no sign-in. Data comes only from search_public_pastors /
+     get_public_pastor, which return opted-in, active pastors and a fixed
+     set of fields — never the credential scan. -->
+<div id="s-directory" class="screen">
+  <div class="scroll" style="padding-top:0">
+    <div class="auth-shell" style="flex:none;padding-bottom:4px">
+      <img src="${KG_LOGO}" style="width:72px;height:72px;object-fit:contain;margin:0 auto 14px;display:block" alt="${esc(C.networkShort)}">
+      <div class="auth-title">Find a Pastor</div>
+      <div class="auth-sub">Search ${esc(C.networkName)} pastors who have chosen to be listed.</div>
+    </div>
+    <div style="padding:0 18px 40px">
+      <input class="fin" id="dir-q" placeholder="Name, church or city" onkeydown="if(event.key==='Enter')searchPublicPastors()">
+      <button class="fsub" onclick="searchPublicPastors()" style="margin-top:4px">Search →</button>
+      <div class="err" id="dir-err"></div>
+      <div id="dir-results" style="margin-top:14px"></div>
+      <button class="tnav-btn" style="width:100%;margin-top:18px" onclick="go('s-login')">← Back to sign in</button>
+    </div>
+  </div>
+</div>
+
+<div id="s-public-pastor" class="screen">
+  <div class="scroll" style="padding-top:0">
+    <div id="public-pastor-body" style="padding:24px 18px 40px"></div>
+  </div>
+</div>
+
 <div id="s-register" class="screen">
   <div class="scroll" style="padding-top:0">
     <div class="auth-shell" style="flex:none;padding-bottom:4px">
@@ -5079,6 +5314,16 @@ function renderPastor(){
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <button class="tnav-btn" type="button" onclick="$('prof-cred-file').click()" style="flex:1;min-width:120px">📎 Upload credential</button>
         <button class="tnav-btn" type="button" id="prof-cred-view" onclick="viewCredentialDoc()" style="flex:1;min-width:120px;display:none">👁 View</button>
+      </div>
+      <div id="prof-verified" style="font-size:12px;margin:-6px 0 14px"></div>
+
+      <div id="prof-public-wrap" style="display:none">
+        <div style="margin:14px 0 6px;font-size:10px;color:var(--gold);letter-spacing:1.2px;text-transform:uppercase;font-family:'Cormorant Garamond',serif">Public profile</div>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--frost);margin-bottom:6px;cursor:pointer">
+          <input type="checkbox" id="prof-public" style="margin-top:3px;width:18px;height:18px;accent-color:var(--gold)">
+          <span>Let anyone find my public page — my name, photo, church, city and credentials. My credential scan is never shown publicly.</span>
+        </label>
+        <div id="prof-public-link" style="font-size:12px;color:var(--mist);margin-bottom:14px"></div>
       </div>
 
       <div style="margin:14px 0 6px;font-size:10px;color:var(--gold);letter-spacing:1.2px;text-transform:uppercase;font-family:'Cormorant Garamond',serif">Ministry photos</div>
@@ -5787,6 +6032,9 @@ async function boot(){
   // link opened on a phone where anyone was signed in (including the admin
   // testing her own link) silently opened that session instead.
   const inviteToken=new URLSearchParams(location.search).get('invite');
+  // A public pastor link (?pastor=<slug>) needs no sign-in, so it is honoured
+  // before any saved session as well.
+  const publicSlug=new URLSearchParams(location.search).get('pastor');
   history.replaceState({screen:'root'},'',' ');
   await loadConfig();
   renderPastor();
@@ -5805,6 +6053,7 @@ async function boot(){
   }
 
   if(inviteToken){ $('reg-token') && ($('reg-token').value=inviteToken); go('s-register'); return; }
+  if(publicSlug){ ST.publicSlug=publicSlug; go('s-public-pastor'); return; }
 
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
