@@ -1531,7 +1531,7 @@ async function submitPin(){
     }
     hideErr('pin-err');
     if(session.role === 'bishop' || session.role === 'admin'){
-      launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
+      launchBishopDashboard(); initNotifPolling();
     } else {
       // Signing in as a pastor must clear any dashboard left over from an
       // earlier user on this page load — see clearDashboardChrome(). Sign-out
@@ -3263,7 +3263,7 @@ async function confirmPinReset(){
       showOk('reset-ok','PIN updated. Signing you in…');
       setTimeout(()=>{
         if(session.role === 'bishop' || session.role === 'admin'){
-          launchBishopDashboard(); bishopViewApp(false); initNotifPolling();
+          launchBishopDashboard(); initNotifPolling();
         } else {
           clearDashboardChrome();
           go('s-home'); initNotifPolling();
@@ -6047,7 +6047,7 @@ async function boot(){
   const magic = await consumeMagicLinkHash();
   if(magic){
     if(magic.role === 'bishop' || magic.role === 'admin'){
-      launchBishopDashboard(); bishopViewApp(false); initNotifPolling(); return;
+      launchBishopDashboard(); initNotifPolling(); return;
     }
     go('s-home'); initNotifPolling(); return;
   }
@@ -6058,7 +6058,7 @@ async function boot(){
   const saved=loadLocal('session');
   if(saved?.role==='bishop'||saved?.role==='admin'){
     ST.session=saved;
-    launchBishopDashboard(); bishopViewApp(false); initNotifPolling(); return;
+    launchBishopDashboard(); initNotifPolling(); return;
   }
   if(saved?.userId){
     ST.session=saved;
