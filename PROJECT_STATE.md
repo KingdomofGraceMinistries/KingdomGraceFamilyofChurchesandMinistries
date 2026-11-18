@@ -1,9 +1,68 @@
 # Kingdom Grace Pastoral Network — Project State
 
-**Last updated:** 2026-11-06
+**Last updated:** 2026-11-18
 **Status:** In production — security remediation in progress (see tracker below)
 **Client:** Kingdom Grace Family of Churches and Ministries
 **Built by:** Envision VirtualEdge Group LLC
+
+---
+
+## 🧭 2026-11-18 — profiles never saved; pastor reads failed; admins had no profile
+
+Reported as "admin cannot save her profile." The audit log showed it was
+network-wide: **`PROFILE_UPDATED`, `CREDENTIAL_DOC_UPLOADED` and
+`CHECKIN_SUBMITTED` have never once been recorded.** The single credential
+scan in storage (2026-05-14) reached the bucket, but its pointer was never
+saved, so no bishop could see it.
+
+### A. Three causes, each confirmed against production
+
+1. **Every signed-in `rf_pastors` read failed (42501).** `PASTOR_COLS` names
+   `credential_doc_path` / `credential_doc_uploaded_at`, which
+   `20260514165925` granted UPDATE only. Postgres refuses the whole query.
+   Proven with a read-only `set local role authenticated` probe: selecting
+   `id, full_name` works, adding `credential_doc_path` is denied.
+2. **Every `sbU()` against `rf_pastors` / `rf_admins` failed (42501).** It
+   sent `Prefer: return=representation`, i.e. RETURNING every column,
+   including `pin_bcrypt`. Hit profile save, credential pointer, check-in
+   stamp, weekly post count, and the bishop's admin Lock/Unlock. Only these
+   two tables have column-restricted SELECT (checked catalogue-wide).
+3. **Admins and the bishop had no profile storage.** "Me" is the pastor
+   form; it PATCHed `rf_pastors` with an `rf_admins` id.
+
+### B. Fix
+
+- Migration `20261118190000_profile_saves_and_admin_profiles.sql`: SELECT
+  on the two credential columns; the pastor profile columns added to
+  `rf_admins`; `update_my_admin_profile(p jsonb)` — SECURITY DEFINER, writes
+  only profile columns on the caller's own active row, credential path must
+  sit in the caller's own folder. **Not a self-update policy:** column
+  grants are per-role, and `authenticated` holds UPDATE on
+  `rf_admins.status` / `.permissions`, so a policy would let an admin unlock
+  or re-permission themselves. Asserts `pin_bcrypt` stays unreadable.
+- Client: `sbU()` sends `return=minimal` (no caller used the row);
+  `loadProfile` / `saveProfile` / `uploadCredentialDoc` branch on role via
+  `saveMyProfile()`; failures now audit (`PROFILE_UPDATE_FAILED`,
+  `CREDENTIAL_DOC_UPLOAD_FAILED`, `PROFILE_LOAD_FAILED`) and show the reason.
+- Uploads: a file with an empty `type` (iPhone `.heic` in Chrome on
+  Android/Windows) was sent as `application/octet-stream` and refused by the
+  bucket MIME list; the type now comes from the extension. Avatar path is
+  unique per upload — the fixed `<id>.<ext>` name was refused as a
+  duplicate on every change after the first.
+- Closed from 2026-11-06 §N: the burnout prompt no longer sends the pastor's
+  name, and it runs for pastors only. Ministry-photo names use
+  `crypto.randomUUID()`.
+
+### C. Left open
+
+- **Migration not yet applied** — the CLI had no access token this session
+  (Codespaces rebuild; see 2026-09-08 §E). Until `db push`, pastor lists and
+  the admin "Me" screen still fail. Apply, then verify, then run a synthetic
+  pastor enrolment through credential upload and remove it.
+- The orphaned 2026-05-14 file in `credentials` belongs to the test pastor;
+  re-uploading from the profile now records a pointer. Not deleted.
+- Supabase security advisor: leaked-password protection is off (Auth
+  setting; this app signs in by PIN, so it has no effect today).
 
 ---
 

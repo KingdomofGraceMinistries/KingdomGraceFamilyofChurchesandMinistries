@@ -785,14 +785,17 @@ async function sbUpsert(table,data,onConflict){
   if(!r.ok) throw new Error((await r.json().catch(()=>({}))).message || 'Upsert failed');
   return r.json();
 }
+// return=minimal: asking for the updated row back makes PostgREST RETURN
+// every column, and rf_pastors / rf_admins hold columns (pin_bcrypt) that
+// `authenticated` cannot read — so the whole PATCH failed with 42501. No
+// caller uses the row; the write is the point.
 async function sbU(table,filter,data){
-  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:SB_HDR(),body:JSON.stringify(data)}));
+  const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'PATCH',headers:{...SB_HDR(),'Prefer':'return=minimal'},body:JSON.stringify(data)}));
   if(!r.ok){
     let msg = 'Update failed ('+r.status+')';
     try { const d = await r.json(); msg = d?.message || d?.error || msg; } catch(_){}
     throw new Error(msg);
   }
-  return r.json();
 }
 async function sbD(table,filter){
   const r = await sbWithRetry(() => fetch(`${C.supabaseUrl}/rest/v1/${table}?${filter}`,{method:'DELETE',headers:SB_GET_HDR()}));
@@ -942,13 +945,18 @@ async function consumeMagicLinkHash(){
   }
 }
 // ── STORAGE UPLOAD ──
+// Some files arrive with file.type='' — most often an iPhone .heic picked
+// in Chrome on Android or Windows. Every bucket has an allowed-MIME list,
+// so an empty or generic type is rejected outright. Name the type from the
+// extension instead; the bucket list still decides what is accepted.
+const UPLOAD_TYPES = {pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',heic:'image/heic',heif:'image/heif'};
+function uploadContentType(file, fallback){
+  if(file.type) return file.type;
+  const ext = (file.name||'').split('.').pop().toLowerCase();
+  return UPLOAD_TYPES[ext] || fallback;
+}
 async function storageUpload(bucket, path, file){
-  // Some files (renamed iPhone HEICs, raw camera files, drag-and-drop from
-  // certain apps) come through with file.type='' — Supabase storage rejects
-  // empty Content-Type with a 400. Fall back to image/jpeg when the
-  // browser couldn't sniff a type, which matches the .jpg extension the
-  // upload helpers currently generate.
-  const contentType = file.type || 'image/jpeg';
+  const contentType = uploadContentType(file, 'image/jpeg');
   // x-upsert is intentionally omitted. With it set, Supabase storage emits
   // INSERT ... ON CONFLICT DO UPDATE, which makes Postgres evaluate the
   // UPDATE policy's WITH CHECK against the would-be-updated row even when
@@ -974,7 +982,7 @@ async function storageUpload(bucket, path, file){
 // caller is responsible for generating a short-lived signed URL via
 // signedUrl(bucket, path) when it's time to fetch the file.
 async function storageUploadPrivate(bucket, path, file){
-  const contentType = file.type || 'application/octet-stream';
+  const contentType = uploadContentType(file, 'application/octet-stream');
   // x-upsert intentionally omitted — see storageUpload() above for the
   // RLS reason. Private buckets (credentials, ministry-photos) also
   // generate fresh Date.now()-suffixed paths so collisions don't happen.
@@ -1263,11 +1271,13 @@ function burnoutLevel(score){ return score<33?'green':score<66?'amber':'red'; }
 function burnoutLabel(score){ return score<33?'Thriving':score<66?'Watch':'At Risk'; }
 
 async function runBurnoutCheck(){
-  if(!ST.profile) return;
+  // ST.profile also holds a bishop/admin profile once they open "Me" in
+  // View App; their rows carry no check-in data, so the score is meaningless.
+  if(!ST.profile || ST.session?.role!=='pastor') return;
   const score = burnoutScore(ST.profile);
   if(score>=60){
     try {
-      const raw = await aiCall(`A pastor named ${ST.profile.full_name} may be experiencing ministry burnout. Engagement score: ${score}/100 (higher = more at risk). Write a brief, warm, private encouragement (2-3 sentences) as if from a caring mentor. Reference one specific scripture. Speak directly to them. Do not use clinical terms. JSON: {"message":"...","verse":"...","ref":"..."}`,'care');
+      const raw = await aiCall(`A pastor may be experiencing ministry burnout. Engagement score: ${score}/100 (higher = more at risk). Write a brief, warm, private encouragement (2-3 sentences) as if from a caring mentor. Reference one specific scripture. Speak directly to them. Do not use clinical terms. JSON: {"message":"...","verse":"...","ref":"..."}`,'care');
       const d = JSON.parse(raw.replace(/```json|```/g,'').trim());
       const banner = $('care-banner');
       if(banner){
@@ -2442,7 +2452,20 @@ async function deleteEvent(id){
   } catch(e){ alert('Could not remove.'); }
 }
 
-function loadProfile(){
+// The bishop and admins keep their profile on rf_admins, not rf_pastors.
+const ADMIN_PROFILE_COLS = 'id,full_name,email,avatar_url,church_name,city,years_in_ministry,bio,prayer_focus,believing_for,spiritual_gifts,credential_type,ordination_date,ordained_by,covering_under,credential_doc_path,credential_doc_uploaded_at';
+
+async function loadProfile(){
+  if(isDashboardUser()){
+    try {
+      const rows = await sbS('rf_admins',{select:ADMIN_PROFILE_COLS, id:'eq.'+ST.session.userId});
+      if(rows[0]) ST.profile = rows[0];
+    } catch(e){
+      audit('PROFILE_LOAD_FAILED',{table:'rf_admins', targetId:ST.session.userId, message:String(e.message||e).slice(0,200)});
+      showErr('prof-err','Could not load your profile: '+(e.message||'unknown'));
+      return;
+    }
+  }
   const p=ST.profile; if(!p) return;
   const fields={name:'full_name',churchName:'church_name',city:'city',years:'years_in_ministry',bio:'bio',prayerFocus:'prayer_focus',believing:'believing_for',credentialType:'credential_type',ordinationDate:'ordination_date',ordainedBy:'ordained_by',covering:'covering_under'};
   Object.entries(fields).forEach(([id,key])=>{const e=$('prof-'+id); if(e)e.value=p[key]||'';});
@@ -2739,12 +2762,35 @@ async function saveProfile(){
   };
   if(ST.avatarData) data.avatar_url=ST.avatarData;
   try {
-    await sbU('rf_pastors','id=eq.'+ST.session.userId,data);
+    await saveMyProfile(data);
     ST.profile={...ST.profile,...data}; saveLocal('profile',ST.profile);
-    audit('PROFILE_UPDATED',{table:'rf_pastors',targetId:ST.session.userId});
+    audit('PROFILE_UPDATED',{table:profileTable(),targetId:ST.session.userId});
     showOk('prof-ok','Profile saved.');
-  } catch(e){showErr('prof-err','Could not save profile.');}
+  } catch(e){
+    audit('PROFILE_UPDATE_FAILED',{table:profileTable(),targetId:ST.session.userId,message:String(e.message||e).slice(0,200)});
+    showErr('prof-err','Could not save profile: '+(e.message||'unknown'));
+  }
   btn.disabled=false; btn.textContent='Save profile →';
+}
+
+function profileTable(){ return isDashboardUser() ? 'rf_admins' : 'rf_pastors'; }
+
+// Pastors update their own rf_pastors row (pastors_self_update). The bishop
+// and admins go through update_my_admin_profile(), which writes only
+// profile columns on the caller's own row — see migration 20261118190000
+// for why a self-update policy on rf_admins would be unsafe.
+async function saveMyProfile(data){
+  if(!isDashboardUser()){
+    await sbU('rf_pastors','id=eq.'+ST.session.userId,data);
+    return;
+  }
+  const r=await sbWithRetry(()=>fetch(`${C.supabaseUrl}/rest/v1/rpc/update_my_admin_profile`,{
+    method:'POST', headers:SB_HDR(), body:JSON.stringify({p:data}),
+  }));
+  if(!r.ok){
+    const err=await r.json().catch(()=>({}));
+    throw new Error(err.message || 'Update failed ('+r.status+')');
+  }
 }
 
 // ── CREDENTIAL DOC UPLOAD (private bucket) ─────────────────────────
@@ -2759,13 +2805,14 @@ async function uploadCredentialDoc(input){
     const path = `${authId}/credential-${Date.now()}.${ext}`;
     await storageUploadPrivate('credentials', path, file);
     const nowIso = new Date().toISOString();
-    await sbU('rf_pastors','id=eq.'+ST.session.userId,{credential_doc_path:path, credential_doc_uploaded_at:nowIso});
+    await saveMyProfile({credential_doc_path:path, credential_doc_uploaded_at:nowIso});
     ST.profile = {...ST.profile, credential_doc_path:path, credential_doc_uploaded_at:nowIso};
     saveLocal('profile', ST.profile);
-    audit('CREDENTIAL_DOC_UPLOADED',{table:'rf_pastors', targetId:ST.session.userId});
+    audit('CREDENTIAL_DOC_UPLOADED',{table:profileTable(), targetId:ST.session.userId});
     renderCredentialDocStatus();
     showOk('prof-ok','Credential saved.');
   } catch(e){
+    audit('CREDENTIAL_DOC_UPLOAD_FAILED',{table:profileTable(), targetId:ST.session.userId, message:String(e.message||e).slice(0,200)});
     showErr('prof-err','Could not upload credential: '+(e.message||'unknown'));
     if(status) status.textContent='No document uploaded.';
   }
@@ -2806,7 +2853,7 @@ async function uploadMinistryPhotos(input){
     if(file.size > 10*1024*1024){ showErr('prof-err','Each photo must be under 10MB. Skipping '+file.name); continue; }
     try {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `${authId}/photo-${Date.now()}-${Math.floor(Math.random()*1000)}.${ext}`;
+      const path = `${authId}/photo-${Date.now()}-${crypto.randomUUID()}.${ext}`;
       await storageUploadPrivate('ministry-photos', path, file);
       audit('MINISTRY_PHOTO_UPLOADED',{path});
     } catch(e){
@@ -2912,8 +2959,10 @@ async function handleAvatar(input){
   const wrap=$('av-wrap');
   if(wrap) wrap.innerHTML='<div style="width:80px;height:80px;border-radius:50%;background:var(--ink3);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--mist)">Uploading...</div>';
   try {
-    const ext=file.name.split('.').pop()||'jpg';
-    const path=`${ST.session.userId}.${ext}`;
+    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+    // Unique per upload: storageUpload() sends no x-upsert, so reusing one
+    // fixed name refused every avatar change after the first as a duplicate.
+    const path=`${ST.session.userId}-${Date.now()}.${ext}`;
     const url=await storageUpload('avatars',path,file);
     ST.avatarData=url;
     if(wrap) wrap.innerHTML=`<img src="${url}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);cursor:pointer" onclick="$('av-file').click()">`;
