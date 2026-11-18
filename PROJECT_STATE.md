@@ -111,13 +111,67 @@ deliberate test account (governance §4).
 **Where the admin really was:** the working admin today is the account added
 2026-08-14 (`6bbf6a97…`), not the 2026-11-06 one.
 
-### E. Left open
+### E. Later still — public profiles, cleanup, dashboard-first
 
-- **The app never deletes superseded files.** Changing an avatar, or a bishop
-  removing a win/announcement, leaves the old object in storage. Deletes now
-  *work* (D above); nothing calls them for those buckets yet.
-- **Staff land in the pastor view on every load**; "View Dashboard" exists only
-  on Home. Operator to decide whether staff should open on the dashboard.
+Commits `3ae4a47` (migration `20261118230000`) and `5c84e8d`.
+
+- **Opt-in public pastor profiles.** `public_profile` (pastor's switch, off by
+  default), `public_slug` (minted by trigger), `credential_verified_at/_by`
+  (only via `set_credential_verified()`, bishop/admin, audited). The badge
+  clears automatically when a pastor edits a credential field or uploads a new
+  scan. Public reads only through `get_public_pastor` / `search_public_pastors`
+  (fixed columns, opted-in + active, wildcards escaped, 25 rows) — no anon
+  table policy. "Find a Pastor" on the sign-in screen; page at `/?pastor=<slug>`.
+  The scan is never public.
+- **Dashboard drill-down now shows credentials** (it showed none) with View
+  scan and Verify / Remove verification. Pastors no longer see a scan button
+  they cannot use.
+- **Replaced files are deleted:** old avatar (saved or unsaved), old
+  credential scan, a deleted win's photo, a removed announcement's image.
+- **Staff open on the dashboard** (operator's decision); "View App" for the
+  pastor screens.
+
+### F. Decisions waiting on the operator
+
+**Privacy / data / data-use statements** — draft for legal and Bishop review:
+https://claude.ai/artifact/CA1CXpdDXKdQ9SvYmPRxja. Nothing goes into the app
+until approved. Before it can be published:
+
+- [ ] **Legal entity and governing state** — exact registered name, which
+      state's law applies.
+- [ ] **Privacy contact** — a named person or address for copy / correct /
+      delete requests.
+- [ ] **Retention** — how long to keep a departed pastor's data, the security
+      log (holds IP addresses), and check-ins. Nothing is deleted
+      automatically today.
+- [ ] **Staff can read ALL direct messages**, including pastor-to-pastor
+      (`rf_direct_messages` SELECT includes `is_bishop()`). Keep and disclose
+      (as drafted), or limit staff to messages addressed to them.
+- [ ] **Every pastor can see every other pastor's email** (`email` is in the
+      `authenticated` SELECT grant on `rf_pastors`). Keep or hide.
+- [ ] **Counsel review** of the Data-Use Rights wording and the
+      legal-disclosure clause; whether any member is outside the US.
+
+Once approved: text stored in the database (not hard-coded), public Privacy
+and Data pages linked from sign-in and Settings, a required consent box at
+sign-up recording version and date, existing users asked once at next
+sign-in, re-consent when the version changes.
+
+**Staff as pastors — designed, not built.** Operator chose *all staff
+automatically*. Today the bishop and admins have no `rf_pastors` row, so
+under View App their check-ins, wins, prayer requests, comments, fasts, team
+responses and announcements are refused by RLS
+(`pastor_id = pastor_id_for_current_user()`). Plan: a trigger on `rf_admins`
+creates a linked `rf_pastors` row (same `auth_user_id`, `role` =
+admin/bishop — the check constraint already allows both — no PIN, profile
+fields copied from `rf_admins`) for every active staff member with a linked
+sign-in, backfilling the three existing staff; mirror lock/removal to the
+pastor row's status. Client: `myPastorId()` for every pastor write and "mine"
+check (the `ST.session.userId` sites listed in this session), "Me" shows the
+pastor profile for staff who have one. DMs and devotion review stay keyed on
+the staff id.
+
+### G. Left open
 - Deactivate the legacy `anon` / `service_role` keys — the post-switch
   devotion cron has run green every day 2026-11-06 → 2026-11-18.
 - `kgfcm-checkin-remind` still unscheduled (product decision).
